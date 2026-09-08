@@ -1,0 +1,22 @@
+# GPU dependencies — installed at the top of each Colab notebook (free T4
+# runtime), not on the local dev machine. Kept separate from requirements.txt
+# so local VS Code dev / tests never need CUDA or a multi-GB torch install.
+#
+# Typical first cell in a notebook:
+#   !pip install -q -r requirements-colab.txt
+#   !pip install -q -e .
+#
+# Pin exact versions once the training scripts are working end-to-end in
+# Colab (Unsloth + torch + transformers are version-sensitive as a group);
+# left loose for now since this is scaffolding.
+
+unsloth
+torch
+transformers>=4.42
+trl>=0.9
+peft>=0.11
+accelerate>=0.31
+bitsandbytes>=0.43
+datasets>=2.19
+sentencepiece
+xformers

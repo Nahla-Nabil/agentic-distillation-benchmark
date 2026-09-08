@@ -1,0 +1,30 @@
+# Dataset sourcing and filtering config for src/adbench/data/prepare.py
+
+source:
+  hf_dataset: glaiveai/glaive-function-calling-v2
+  license: Apache-2.0
+
+subset:
+  # Final size after filtering, before the train/test split.
+  n_examples_min: 500
+  n_examples_max: 1000
+  # Require this many *distinct* tool/function names to appear in the subset
+  # so the harness has real variety to build multi-step chains from.
+  min_distinct_tools: 5
+  max_distinct_tools: 10
+  # Filled in once we've inspected the dataset's function pool and picked
+  # which tool types to keep (e.g. weather, search, calculator, calendar...).
+  selected_tools: []
+
+split:
+  train_fraction: 0.8
+  test_fraction: 0.2
+  seed: 42
+  # The 20% held-out test split is written once and never regenerated or
+  # touched again until final evaluation — enforced by prepare.py refusing
+  # to overwrite an existing test split file.
+  test_split_frozen: true
+
+output:
+  train_path: data/splits/train.jsonl
+  test_path: data/splits/test.jsonl

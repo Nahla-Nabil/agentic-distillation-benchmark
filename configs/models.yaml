@@ -1,0 +1,42 @@
+# Model identifiers and load settings for the two roles in the study.
+# Both are loaded via Unsloth (FastLanguageModel) for 4-bit QLoRA training
+# on a free Colab T4.
+
+teacher:
+  hf_id: Qwen/Qwen3-14B
+  role: teacher
+  # Teacher is inference-only (produces logits/hidden states for KD) — no
+  # gradient updates, so it can stay 4-bit quantized to fit alongside the
+  # student on a single T4.
+  load_in_4bit: true
+  max_seq_length: 2048
+
+student:
+  hf_id: Qwen/Qwen3-4B-Instruct-2507
+  role: student
+  load_in_4bit: true
+  max_seq_length: 2048
+  # LoRA settings shared by both the SFT-only and distillation-guided runs,
+  # so the only difference between conditions 2 and 3 is the loss function,
+  # not the adapter capacity.
+  lora:
+    r: 16
+    alpha: 16
+    dropout: 0.0
+    target_modules:
+      - q_proj
+      - k_proj
+      - v_proj
+      - o_proj
+      - gate_proj
+      - up_proj
+      - down_proj
+
+# Layer-analysis notebook needs to know how to line up teacher/student layers
+# even though they have different depths/hidden sizes — filled in once we
+# confirm each model's actual config (num_hidden_layers, hidden_size).
+layer_alignment:
+  strategy: uniform_span  # map student layer i -> teacher layer round(i * teacher_layers/student_layers)
+  compare:
+    - attention
+    - ffn

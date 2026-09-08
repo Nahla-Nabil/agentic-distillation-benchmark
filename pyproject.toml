@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adbench"
+version = "0.1.0"
+description = "Agentic Distillation Benchmark: does agentic tool-use reliability degrade faster than general LM performance under distillation, and at which layers?"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Nahla Nabil" }]
+
+# Kept intentionally empty here: local (CPU) deps live in requirements.txt,
+# GPU/Colab-only deps live in requirements-colab.txt. See README for why.
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

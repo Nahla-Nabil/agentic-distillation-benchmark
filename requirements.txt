@@ -1,0 +1,28 @@
+# Local / CPU dependencies — for VS Code dev, the agentic harness, data prep,
+# and unit tests. NONE of this requires a GPU.
+#
+# GPU training/inference deps (Unsloth, torch, trl, bitsandbytes, ...) live in
+# requirements-colab.txt and are installed inside the Colab notebooks instead —
+# keeping them out of here means `pip install -r requirements.txt` stays fast
+# and works on a laptop with no CUDA.
+
+# install this package itself (src/adbench) in editable mode
+-e .
+
+# data handling
+datasets>=2.19
+pandas>=2.2
+pyyaml>=6.0
+jsonschema>=4.22
+
+# harness / eval
+tqdm>=4.66
+tenacity>=8.2          # retry/backoff helper for tool-call error handling
+
+# analysis / plotting (layer-analysis figures, eval result plots)
+numpy>=1.26
+matplotlib>=3.8
+
+# dev / testing
+pytest>=8.0
+ruff>=0.5               # lint + format
