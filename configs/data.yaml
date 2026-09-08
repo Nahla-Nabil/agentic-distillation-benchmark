@@ -4,6 +4,29 @@ source:
   hf_dataset: glaiveai/glaive-function-calling-v2
   license: Apache-2.0
 
+# --- Findings from inspecting the raw dataset (see README.md's "Format notes
+# from the raw dataset" section for the full writeup) that shape everything
+# below ---
+#
+# 1. The raw "chat" field is free text, not structured turns. A function call
+#    is a <functioncall> block whose "arguments" value is a JSON-encoded
+#    STRING wrapped in single quotes (e.g. 'arguments': '{"a": 1}') — not a
+#    nested JSON object like Qwen's <tool_call> convention. Reformatted at
+#    prep time, not just filtered.
+# 2. Genuine same-turn multi-step chains (2+ sequential tool calls with no
+#    user message in between) appear in only 8 of 112,960 examples. This
+#    dataset is essentially single-step; every example prepare.py keeps is
+#    labeled chain_length=1. Chain-length-3/5 eval tasks must be COMPOSED
+#    from multiple single-step examples — that composition lives in
+#    tasks.py's real load_tasks(), not here.
+# 3. The SAME tool name is called with inconsistent argument key names across
+#    different examples (synthetic per-example generation, not a fixed real
+#    API) — e.g. calculate_distance appears with {origin,destination},
+#    {start_location,end_location}, {point1,point2}, etc. Each tool below is
+#    pinned to its single most common ("canonical") key signature; examples
+#    using a different signature for the same tool name are dropped rather
+#    than guessing at a mapping.
+
 subset:
   # Final size after filtering, before the train/test split.
   n_examples_min: 500
@@ -12,19 +35,47 @@ subset:
   # so the harness has real variety to build multi-step chains from.
   min_distinct_tools: 5
   max_distinct_tools: 10
-  # Filled in once we've inspected the dataset's function pool and picked
-  # which tool types to keep (e.g. weather, search, calculator, calendar...).
-  selected_tools: []
+
+  # The 8 tools below are the highest-frequency names in the raw dataset
+  # that are also deterministically mockable without external I/O (pure
+  # calculation, or a small fixed lookup table) — see
+  # src/adbench/harness/tools.py::build_glaive_registry(). canonical_args is
+  # the argument-key signature (sorted) that a call must match exactly to be
+  # kept; this is what "canonicalization" filters against.
+  selected_tools:
+    - name: calculate_distance
+      canonical_args: [destination, origin]
+    - name: convert_currency
+      canonical_args: [amount, from_currency, to_currency]
+    - name: get_stock_price
+      canonical_args: [symbol]
+    - name: calculate_discount
+      canonical_args: [discount_percentage, original_price]
+    - name: calculate_bmi
+      canonical_args: [height, weight]
+    - name: calculate_tip
+      canonical_args: [bill_amount, tip_percentage]
+    - name: calculate_age
+      canonical_args: [birthdate]
+    - name: generate_random_number
+      canonical_args: [max, min]
+
+  # Examples per tool before the train/test split (8 tools x 100 = 800,
+  # comfortably inside [n_examples_min, n_examples_max]). Every tool above
+  # has 1700+ canonical-signature examples available, so 100/tool is a small,
+  # safe fraction of each pool.
+  per_tool_target: 100
 
 split:
   train_fraction: 0.8
   test_fraction: 0.2
   seed: 42
-  # The 20% held-out test split is written once and never regenerated or
-  # touched again until final evaluation — enforced by prepare.py refusing
-  # to overwrite an existing test split file.
+  # Both files are written once and never silently regenerated — prepare.py
+  # refuses to overwrite either without --force, so train/test never leak
+  # across experiments by re-running the script with a different seed.
   test_split_frozen: true
 
 output:
   train_path: data/splits/train.jsonl
   test_path: data/splits/test.jsonl
+  stats_path: data/splits/prepare_stats.json

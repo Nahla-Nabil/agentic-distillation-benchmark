@@ -118,6 +118,13 @@ Resolved design questions:
 - **General-LM eval set** — uses a wikitext-2-raw-v1 sample
   (`data/general_eval/`), not the Glaive test split, so it actually measures
   general capability rather than more tool-calling ability.
+- **Dataset prepared** — `data/prepare.py` builds the 800-example
+  (640/160) subset across 8 deterministically-mockable tools; see
+  `data/README.md`'s "Format notes from the raw dataset" for what needed
+  reformatting (not just filtering) along the way, and
+  `harness/tools.py::build_glaive_registry()` for the tool implementations.
+  `tasks.py`'s real `load_tasks()` (still a TODO) will be a thin reader over
+  this output.
 
 ## License
 
