@@ -23,3 +23,13 @@ this reason.
 
 _Filled in once `prepare.py` is run — final example count, the selected tool
 types, and their distribution._
+
+## General LM eval sample
+
+`data/general_eval/wikitext2_sample.jsonl` — a small sample of
+[wikitext-2-raw-v1](https://huggingface.co/datasets/wikitext) used as the
+*non-agentic* comparison baseline (perplexity), kept deliberately separate
+from the Glaive split above since that's entirely tool-calling text. Built
+by `python -m adbench.data.general_eval` (see
+[configs/experiment.yaml](../configs/experiment.yaml):`general_lm_eval`).
+Also gitignored — regenerate locally.

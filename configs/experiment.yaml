@@ -26,9 +26,19 @@ harness:
   max_retries_per_step: 2
 
 # General language-modeling comparison baseline (not agentic).
+# Deliberately NOT the Glaive test split — that's entirely tool-calling text,
+# which wouldn't isolate "got worse at everything" from "got worse
+# specifically at agentic tool-use". Uses a small held-out general-text
+# sample instead. Cached locally by adbench.data.general_eval (gitignored,
+# like the other data/ subfolders).
 general_lm_eval:
-  metric: perplexity           # or a small standard benchmark, TBD
-  eval_set: data/splits/test.jsonl
+  metric: perplexity
+  source:
+    hf_dataset: wikitext
+    hf_config: wikitext-2-raw-v1
+    split: test
+  n_samples: 200                # number of held-out text chunks to eval on
+  eval_set: data/general_eval/wikitext2_sample.jsonl
 
 # Layer-wise activation comparison (deliverable #5).
 layer_analysis:

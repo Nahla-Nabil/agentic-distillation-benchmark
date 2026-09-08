@@ -16,6 +16,7 @@ venv/
 data/raw/
 data/processed/
 data/splits/
+data/general_eval/
 *.jsonl
 !data/README.md
 

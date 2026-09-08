@@ -2,6 +2,18 @@
 # Both are loaded via Unsloth (FastLanguageModel) for 4-bit QLoRA training
 # on a free Colab T4.
 
+# Tokenizer compatibility: VERIFIED shared tokenizer (Qwen2Tokenizer,
+# vocab_size=151643) via scripts/verify_tokenizer_compatibility.py — logit-
+# level KD in training/losses.py relies on this holding.
+tokenizer_compatibility:
+  verified: true
+  shared_tokenizer: true
+  vocab_size: 151643
+  checked_with: scripts/verify_tokenizer_compatibility.py
+  # If this ever needs re-checking against a different model pair, rerun
+  # that script — a mismatch means training/losses.py must switch from
+  # logit-level KD to its sequence-level-distillation fallback.
+
 teacher:
   hf_id: Qwen/Qwen3-14B
   role: teacher

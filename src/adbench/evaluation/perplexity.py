@@ -4,10 +4,14 @@ to distinguish "this model got worse at everything" from "this model got
 worse specifically at agentic tool-use" (configs/experiment.yaml:
 general_lm_eval).
 
+Eval set is wikitext-2-raw-v1 (not the Glaive test split, which is entirely
+tool-calling text) — see src/adbench/data/general_eval.py for how it's
+fetched/cached, and configs/experiment.yaml:general_lm_eval for the source
+config.
+
 TODO:
-  - Pick the eval_set: could be a held-out slice of a general corpus
-    (e.g. wikitext) rather than data/splits/test.jsonl, since the latter is
-    entirely tool-calling text and wouldn't isolate "general" degradation.
+  - Load data/general_eval/wikitext2_sample.jsonl (built by
+    adbench.data.general_eval; run it first if the file doesn't exist yet).
   - Implement compute_perplexity(model, tokenizer, texts) -> float using
     standard sliding-window / stride perplexity computation.
 """
