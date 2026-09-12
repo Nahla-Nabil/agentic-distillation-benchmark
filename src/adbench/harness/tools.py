@@ -10,15 +10,31 @@ Tools are deterministic and side-effect-free by design, so eval runs are
 reproducible: e.g. get_weather() is backed by a fixed lookup table, not a
 live API call.
 
-The DEMO_REGISTRY built below is a small, self-contained tool set (4 tools,
+The DEMO_REGISTRY built below is a small, self-contained tool set (6 tools,
 each with a documented failure mode) used by this package's own unit tests
-and for harness development before the real dataset is wired in. Once
-data/prepare.py has run, tasks.py's real task loader will build tool
-vocabulary from the filtered glaive-function-calling-v2 subset instead —
-DEMO_REGISTRY is not that; see tasks.py for the distinction.
+and as the tool vocabulary for tasks.py's synthetic multi-step eval tasks —
+see tasks.py's module docstring for why eval uses this fixed vocabulary
+(kept constant across chain lengths 1/3/5) rather than the real
+glaive-function-calling-v2 data data/prepare.py produces (single-step only;
+used for training, and optionally for a real-data chain_length=1 data point
+via tasks.load_tasks(source="glaive_test") — see build_glaive_registry()
+below for that tool set).
+
+Originally 4 tools (get_weather, calculator, search_knowledge_base,
+get_current_time); convert_temperature and compare_numbers were added
+specifically because they consume a NUMBER as input, which lets a
+multi-step task have a later step genuinely depend on an earlier step's
+result (e.g. "check the weather, then convert that reading to Celsius") —
+the original 4 tools all take place names/free-text/timezone-code arguments
+that don't naturally chain from one tool's output to another's input. The
+4-tool set was also numerically thin for 30-50 *distinct* multi-step
+scenarios: only 4*3*2=24 length-3 permutations without repetition,
+comfortably short of even the low end of that range at length 5. 6 tools
+gives 6*5*4=120 length-3 and 6*5*4*3*2=720 length-5 permutations.
 """
 
 import hashlib
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
@@ -96,20 +112,29 @@ class ToolRegistry:
 # exercise in tests.
 # --------------------------------------------------------------------------
 
-_WEATHER_TABLE = {
+WEATHER_TABLE = {
     "paris": {"temperature_f": 59, "condition": "cloudy"},
     "san francisco": {"temperature_f": 62, "condition": "foggy"},
     "tokyo": {"temperature_f": 71, "condition": "clear"},
     "cairo": {"temperature_f": 95, "condition": "sunny"},
+    "london": {"temperature_f": 55, "condition": "rainy"},
+    "berlin": {"temperature_f": 52, "condition": "overcast"},
+    "sydney": {"temperature_f": 68, "condition": "sunny"},
+    "mumbai": {"temperature_f": 88, "condition": "humid"},
+    "toronto": {"temperature_f": 48, "condition": "windy"},
+    "dubai": {"temperature_f": 102, "condition": "clear"},
 }
+# Public (not _-prefixed): tasks.py's synthetic task generator reads this
+# directly to build weather-based scenarios, so the tool's real vocabulary
+# and the eval tasks that exercise it can never drift apart.
 
 
 def get_weather(city: str) -> dict[str, Any]:
     """Failure mode: unknown city -> ToolExecutionError."""
     key = city.strip().lower()
-    if key not in _WEATHER_TABLE:
+    if key not in WEATHER_TABLE:
         raise ToolExecutionError(f"No weather data for city {city!r}.")
-    return {"city": city, **_WEATHER_TABLE[key]}
+    return {"city": city, **WEATHER_TABLE[key]}
 
 
 _ALLOWED_CALC_CHARS = set("0123456789+-*/(). ")
@@ -128,10 +153,14 @@ def calculator(expression: str) -> dict[str, Any]:
     return {"expression": expression, "result": result}
 
 
-_KNOWLEDGE_BASE = {
+KNOWLEDGE_BASE = {
     "unsloth": "Unsloth is a library for fast, memory-efficient LLM fine-tuning.",
     "distillation": "Knowledge distillation trains a smaller student model to match a larger teacher's outputs.",
     "lora": "LoRA fine-tunes a frozen base model via small low-rank adapter matrices.",
+    "quantization": "Quantization reduces model weight precision (e.g. 4-bit) to shrink memory footprint with minimal accuracy loss.",
+    "perplexity": "Perplexity measures how well a language model predicts a sample of text; lower is better.",
+    "tokenizer": "A tokenizer converts raw text into the subword tokens a language model actually operates on.",
+    "fine-tuning": "Fine-tuning further trains a pretrained model on task-specific data to specialize its behavior.",
 }
 
 
@@ -140,16 +169,21 @@ def search_knowledge_base(query: str) -> dict[str, Any]:
     q = query.strip().lower()
     if not q:
         raise ToolArgumentError("Query must not be empty.")
-    matches = {k: v for k, v in _KNOWLEDGE_BASE.items() if q in k or q in v.lower()}
+    matches = {k: v for k, v in KNOWLEDGE_BASE.items() if q in k or q in v.lower()}
     if not matches:
         raise ToolExecutionError(f"No knowledge base entries matched {query!r}.")
     return {"query": query, "matches": matches}
 
 
-_TIME_TABLE = {
+TIME_TABLE = {
     "utc": "2026-09-08T12:00:00Z",
     "est": "2026-09-08T08:00:00-04:00",
     "jst": "2026-09-08T21:00:00+09:00",
+    "pst": "2026-09-08T04:00:00-08:00",
+    "cet": "2026-09-08T13:00:00+01:00",
+    "ist": "2026-09-08T17:30:00+05:30",
+    "aest": "2026-09-08T22:00:00+10:00",
+    "gmt": "2026-09-08T12:00:00+00:00",
 }
 
 
@@ -160,9 +194,72 @@ def get_current_time(timezone: str) -> dict[str, Any]:
     reproducible.
     """
     key = timezone.strip().lower()
-    if key not in _TIME_TABLE:
+    if key not in TIME_TABLE:
         raise ToolExecutionError(f"Unknown timezone {timezone!r}.")
-    return {"timezone": timezone, "current_time": _TIME_TABLE[key]}
+    return {"timezone": timezone, "current_time": TIME_TABLE[key]}
+
+
+_TEMPERATURE_UNIT_ALIASES = {
+    "f": "f", "fahrenheit": "f",
+    "c": "c", "celsius": "c",
+    "k": "k", "kelvin": "k",
+}
+
+
+def _temperature_to_celsius(value: float, unit: str) -> float:
+    if unit == "f":
+        return (value - 32) * 5 / 9
+    if unit == "k":
+        return value - 273.15
+    return value
+
+
+def _celsius_to(value_c: float, unit: str) -> float:
+    if unit == "f":
+        return value_c * 9 / 5 + 32
+    if unit == "k":
+        return value_c + 273.15
+    return value_c
+
+
+def convert_temperature(value: float, from_unit: str, to_unit: str) -> dict[str, Any]:
+    """Failure mode: unrecognized unit, or a value below absolute zero -> ToolArgumentError.
+
+    Added specifically to be chainable: its input is a plain number, so a
+    later step can genuinely consume an earlier step's numeric result (e.g.
+    get_weather's temperature_f) rather than every tool only accepting
+    free-text/place-name arguments that can't flow between tools.
+    """
+    f_unit = _TEMPERATURE_UNIT_ALIASES.get(from_unit.strip().lower())
+    t_unit = _TEMPERATURE_UNIT_ALIASES.get(to_unit.strip().lower())
+    if f_unit is None or t_unit is None:
+        raise ToolArgumentError(f"Unknown temperature unit: {from_unit!r} or {to_unit!r} (use F, C, or K).")
+    celsius = _temperature_to_celsius(value, f_unit)
+    if celsius < -273.15:
+        raise ToolArgumentError(f"{value}{from_unit} is below absolute zero.")
+    converted = _celsius_to(celsius, t_unit)
+    return {
+        "value": value, "from_unit": from_unit, "to_unit": to_unit,
+        "converted_value": round(converted, 2),
+    }
+
+
+def compare_numbers(a: float, b: float) -> dict[str, Any]:
+    """Failure mode: non-finite input (NaN/infinity) -> ToolArgumentError.
+
+    Added alongside convert_temperature for the same reason: a plain
+    numeric tool that a later step can feed from two *different* earlier
+    steps' results (e.g. two get_weather calls, or two calculator calls),
+    demonstrating dependence on more than just the immediately preceding
+    step.
+    """
+    if not (math.isfinite(a) and math.isfinite(b)):
+        raise ToolArgumentError(f"a and b must be finite numbers, got a={a!r}, b={b!r}.")
+    if a == b:
+        larger = "equal"
+    else:
+        larger = "a" if a > b else "b"
+    return {"a": a, "b": b, "larger": larger, "difference": round(abs(a - b), 4)}
 
 
 def build_demo_registry() -> ToolRegistry:
@@ -201,13 +298,37 @@ def build_demo_registry() -> ToolRegistry:
     ))
     registry.register(ToolSpec(
         name="get_current_time",
-        description="Get the current time in a given timezone (utc, est, or jst).",
+        description="Get the current time in a given timezone (e.g. utc, est, jst, pst, cet, ist, aest, gmt).",
         parameters_schema={
             "type": "object",
             "properties": {"timezone": {"type": "string"}},
             "required": ["timezone"],
         },
         fn=get_current_time,
+    ))
+    registry.register(ToolSpec(
+        name="convert_temperature",
+        description="Convert a temperature value between Fahrenheit, Celsius, and Kelvin.",
+        parameters_schema={
+            "type": "object",
+            "properties": {
+                "value": {"type": "number"},
+                "from_unit": {"type": "string"},
+                "to_unit": {"type": "string"},
+            },
+            "required": ["value", "from_unit", "to_unit"],
+        },
+        fn=convert_temperature,
+    ))
+    registry.register(ToolSpec(
+        name="compare_numbers",
+        description="Compare two numbers and report which is larger and by how much.",
+        parameters_schema={
+            "type": "object",
+            "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+            "required": ["a", "b"],
+        },
+        fn=compare_numbers,
     ))
     return registry
 

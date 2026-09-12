@@ -65,6 +65,58 @@ at creation time and never touched until final evaluation.** See
    student on matched inputs (attention vs FFN, by layer depth), to
    localize where the gap originates.
 
+## Why synthetic tasks for multi-step eval
+
+The harness's multi-step eval (chain lengths 1, 3, 5) runs against a
+**hand-designed synthetic task set** (`harness/tasks.py::build_synthetic_tasks()`,
+121 tasks: 46 at length 1, 40 at length 3, 35 at length 5), not real
+glaive-function-calling-v2 data — deliberately, and only for the multi-step
+eval axis. Training still uses real glaive data throughout.
+
+**Why not real data for eval too:** `data/prepare.py` found that genuine
+multi-step tool chains are essentially absent from
+glaive-function-calling-v2 — only 8 of 112,960 raw examples have a second
+tool call before the next user message (see `data/README.md`'s "Format
+notes"). There's nothing to build a chain-length-3-or-5 real-data eval set
+*from*.
+
+**Why not mix real data (length 1) with synthetic data (length 3, 5):** the
+research question is whether success rate degrades *as chain length
+increases* — chain length needs to be the only thing that varies across
+that comparison. Glaive's tool vocabulary (8 tools: `calculate_bmi`,
+`convert_currency`, ...) and phrasing style are both systematically
+different from anything synthetic. If chain_length=1 eval used real glaive
+data while chain_length=3/5 used a synthetic tool set, any measured
+"degradation" would be confounded with a simultaneous tool-domain shift —
+a model could fail at length 3 partly (or entirely) because the tools are
+unfamiliar, not because the chain got longer. Holding one fixed 6-tool
+vocabulary (`harness/tools.py::build_demo_registry()`) constant across all
+three chain lengths removes that confound.
+
+This means the eval tool vocabulary is intentionally *not* the training
+distribution — eval measures generalization to a fixed, unfamiliar-to-the-model
+tool set, consistently across all three conditions and all three chain
+lengths. `harness/tasks.py::load_tasks(1, source="glaive_test")` is kept
+available as a secondary, single-step-only, in-distribution data point (e.g.
+to sanity-check a fine-tuned model didn't also regress on data resembling
+what it trained on) — it is not part of the chain-length comparison itself.
+
+**A known scope boundary, not an oversight:** the synthetic tasks are
+designed so later steps genuinely follow from earlier ones (e.g. "check the
+weather, then convert that reading to Celsius, then compare it to a
+threshold" — `convert_temperature` and `compare_numbers` specifically exist
+to take a *number* as input so they can consume a prior step's result). The
+harness's grader, however, currently checks only that the *tool name*
+sequence matches, not that a step's arguments actually derive from an
+earlier result — so a model that happened to guess the right tool order
+without reading intermediate results would currently score the same as one
+that followed the chain properly. `tests/test_integration.py`'s
+dependency-feasibility tests demonstrate the designed dependencies are real
+and completable via a model that actually threads values through, but
+argument-level dependency isn't yet independently *enforced*. Closing that
+gap belongs to `evaluation/` (numeric-value extraction or an LLM-judge), not
+`harness/`.
+
 ## Repo structure
 
 ```
@@ -123,8 +175,13 @@ Resolved design questions:
   `data/README.md`'s "Format notes from the raw dataset" for what needed
   reformatting (not just filtering) along the way, and
   `harness/tools.py::build_glaive_registry()` for the tool implementations.
-  `tasks.py`'s real `load_tasks()` (still a TODO) will be a thin reader over
-  this output.
+- **Harness complete** — `harness/tasks.py::load_tasks()` implemented
+  (`source="synthetic"` for eval, `"glaive_train"`/`"glaive_test"` as a thin
+  reader over `data/prepare.py`'s output); see "Why synthetic tasks for
+  multi-step eval" above for the eval-vs-training data split rationale.
+  6-tool demo vocabulary (up from 4 — see `harness/tools.py`'s module
+  docstring for why), 121 hand-designed synthetic tasks across chain lengths
+  1/3/5. 146 tests passing, no GPU or network needed.
 
 ## License
 

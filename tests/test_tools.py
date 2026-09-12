@@ -82,13 +82,99 @@ def test_get_current_time_unknown_timezone_raises():
         registry.call("get_current_time", {"timezone": "mars standard time"})
 
 
+def test_get_weather_expanded_city_reachable():
+    """Table was expanded from 4 to 10 cities for synthetic-task variety —
+    confirm the new entries are actually reachable, not just present."""
+    registry = build_demo_registry()
+    result = registry.call("get_weather", {"city": "Dubai"})
+    assert result["city"] == "Dubai"
+    assert "temperature_f" in result
+
+
+def test_get_current_time_expanded_timezone_reachable():
+    registry = build_demo_registry()
+    result = registry.call("get_current_time", {"timezone": "aest"})
+    assert result["current_time"]
+
+
+def test_search_knowledge_base_expanded_entry_reachable():
+    registry = build_demo_registry()
+    result = registry.call("search_knowledge_base", {"query": "quantization"})
+    assert "quantization" in result["matches"]
+
+
+def test_convert_temperature_freezing_point():
+    registry = build_demo_registry()
+    result = registry.call("convert_temperature", {"value": 32, "from_unit": "F", "to_unit": "C"})
+    assert result["converted_value"] == 0.0
+
+
+def test_convert_temperature_absolute_zero_kelvin_to_fahrenheit():
+    registry = build_demo_registry()
+    result = registry.call("convert_temperature", {"value": 0, "from_unit": "K", "to_unit": "F"})
+    assert result["converted_value"] == pytest.approx(-459.67, abs=0.01)
+
+
+def test_convert_temperature_full_names_accepted():
+    registry = build_demo_registry()
+    result = registry.call("convert_temperature", {"value": 100, "from_unit": "celsius", "to_unit": "fahrenheit"})
+    assert result["converted_value"] == 212.0
+
+
+def test_convert_temperature_unknown_unit_raises():
+    registry = build_demo_registry()
+    with pytest.raises(ToolArgumentError):
+        registry.call("convert_temperature", {"value": 10, "from_unit": "rankine", "to_unit": "C"})
+
+
+def test_convert_temperature_below_absolute_zero_raises():
+    registry = build_demo_registry()
+    with pytest.raises(ToolArgumentError):
+        registry.call("convert_temperature", {"value": -300, "from_unit": "C", "to_unit": "F"})
+
+
+def test_compare_numbers_a_larger():
+    registry = build_demo_registry()
+    result = registry.call("compare_numbers", {"a": 10, "b": 3})
+    assert result["larger"] == "a"
+    assert result["difference"] == 7
+
+
+def test_compare_numbers_b_larger():
+    registry = build_demo_registry()
+    result = registry.call("compare_numbers", {"a": 3, "b": 10})
+    assert result["larger"] == "b"
+
+
+def test_compare_numbers_equal():
+    registry = build_demo_registry()
+    result = registry.call("compare_numbers", {"a": 5, "b": 5})
+    assert result["larger"] == "equal"
+    assert result["difference"] == 0
+
+
+def test_compare_numbers_nan_raises():
+    registry = build_demo_registry()
+    with pytest.raises(ToolArgumentError):
+        registry.call("compare_numbers", {"a": float("nan"), "b": 1})
+
+
+def test_compare_numbers_infinity_raises():
+    registry = build_demo_registry()
+    with pytest.raises(ToolArgumentError):
+        registry.call("compare_numbers", {"a": float("inf"), "b": 1})
+
+
 # --- ToolRegistry mechanics ---
 
 def test_registry_describe_all_lists_every_tool():
     registry = build_demo_registry()
     described = registry.describe_all()
     names = {d["name"] for d in described}
-    assert names == {"get_weather", "calculator", "search_knowledge_base", "get_current_time"}
+    assert names == {
+        "get_weather", "calculator", "search_knowledge_base", "get_current_time",
+        "convert_temperature", "compare_numbers",
+    }
     for d in described:
         assert "description" in d and "parameters" in d
 
