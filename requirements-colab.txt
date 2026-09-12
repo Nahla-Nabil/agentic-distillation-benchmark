@@ -9,11 +9,20 @@
 # Pin exact versions once the training scripts are working end-to-end in
 # Colab (Unsloth + torch + transformers are version-sensitive as a group);
 # left loose for now since this is scaffolding.
+#
+# No `trl`: training/train.py uses a plain PyTorch training loop (AdamW +
+# transformers.get_scheduler) instead of TRL's SFTTrainer — a KD setup needs
+# a second (teacher) forward pass per step under torch.no_grad() alongside
+# the student's, which doesn't fit SFTTrainer's single-model
+# compute_loss() hook without fighting its abstractions; a manual loop is
+# simpler to get right for this and is what training_step()/run_training_loop()
+# implement. `peft` is still needed — Unsloth's FastLanguageModel.get_peft_model()
+# uses it internally for the LoRA adapters, even though train.py never
+# imports peft directly.
 
 unsloth
 torch
 transformers>=4.42
-trl>=0.9
 peft>=0.11
 accelerate>=0.31
 bitsandbytes>=0.43

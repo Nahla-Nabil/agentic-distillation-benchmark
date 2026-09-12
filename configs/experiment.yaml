@@ -1,19 +1,80 @@
 # The three-way comparison this whole project hinges on, plus eval settings.
 
+# All three conditions run through the SAME script
+# (src/adbench/training/train.py), selected via --condition:
+#     python -m adbench.training.train --condition base
+#     python -m adbench.training.train --condition sft_only
+#     python -m adbench.training.train --condition distilled
+# `checkpoint` is where that condition's LoRA adapter is saved (and where
+# evaluation/run_eval.py loads it back from); `base` still goes through
+# train.py (loads the student, attaches a freshly-initialized, untrained
+# LoRA adapter, saves immediately) rather than being special-cased, so
+# run_eval.py's "load base model + adapter from checkpoint" path is
+# identical across all three conditions — a fresh LoRA adapter is a
+# mathematical no-op (B is zero-initialized) until trained, so this doesn't
+# change base's behavior versus loading the bare hf_id.
 conditions:
   - id: base
     label: "Base student (no fine-tuning)"
-    checkpoint: null              # use student.hf_id from models.yaml as-is
+    checkpoint: checkpoints/base/
 
   - id: sft_only
     label: "SFT-only student (control)"
     checkpoint: checkpoints/sft_only/
-    trainer: adbench.training.sft_train
 
   - id: distilled
     label: "Distillation-guided student (KD + SFT, treatment)"
     checkpoint: checkpoints/distilled/
-    trainer: adbench.training.distill_train
+
+# Training hyperparameters — named here, not hardcoded in train.py, so
+# they're easy to read, change, and sweep without touching code.
+#
+# sft_only and distilled share every field below EXCEPT the kd.* weights
+# (sft_only always runs with kd_weight forced to 0 / sft_weight forced to 1
+# regardless of what's written here — see train.py's resolve_training_config
+# docstring — so the two conditions differ *only* in the loss function, per
+# the README's three-way-comparison design). `base` does no training at all
+# and ignores this whole block.
+training:
+  seed: 42
+  learning_rate: 2.0e-4
+  num_train_epochs: 3
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 4
+  warmup_ratio: 0.03
+  weight_decay: 0.0
+  lr_scheduler_type: cosine
+  logging_steps: 10
+  save_steps: 50
+
+  # Only meaningfully used by the "distilled" condition (see above).
+  kd:
+    temperature: 2.0
+    kd_weight: 0.5
+    sft_weight: 0.5
+
+  # Named hyperparameter variations for the "distilled" condition, applied
+  # via `--sweep <name>` — each overrides one or more dotted keys in this
+  # `training:` block on top of the base values above, so you can compare a
+  # few settings without hand-editing this file each time:
+  #     python -m adbench.training.train --condition distilled --sweep higher_kd_temp
+  sweep:
+    - name: baseline
+      overrides: {}
+    - name: higher_kd_temp
+      overrides:
+        kd.temperature: 4.0
+    - name: kd_heavy
+      overrides:
+        kd.kd_weight: 0.8
+        kd.sft_weight: 0.2
+    - name: sft_heavy
+      overrides:
+        kd.kd_weight: 0.2
+        kd.sft_weight: 0.8
+    - name: lower_lr
+      overrides:
+        learning_rate: 5.0e-5
 
 # Multi-step agentic harness settings (deliverable #2 / #4).
 harness:

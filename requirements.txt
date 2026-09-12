@@ -1,10 +1,15 @@
 # Local / CPU dependencies — for VS Code dev, the agentic harness, data prep,
-# and unit tests. NONE of this requires a GPU.
+# and unit tests. NONE of this requires a GPU or CUDA.
 #
-# GPU training/inference deps (Unsloth, torch, trl, bitsandbytes, ...) live in
-# requirements-colab.txt and are installed inside the Colab notebooks instead —
-# keeping them out of here means `pip install -r requirements.txt` stays fast
-# and works on a laptop with no CUDA.
+# The GPU-*optimized* training stack (Unsloth, bitsandbytes, xformers, plus
+# torch/transformers/trl/peft pinned for that environment) lives in
+# requirements-colab.txt and is installed inside the Colab notebooks instead —
+# keeping the heavy Unsloth/bitsandbytes stack out of here means
+# `pip install -r requirements.txt` stays fast and works on a laptop with no
+# CUDA. `torch` itself IS listed below, deliberately: plain `pip install torch`
+# on a machine with no CUDA pulls the CPU-only wheel, which is exactly what's
+# needed to unit-test training/losses.py's KD/SFT loss math with dummy
+# tensors (see tests/test_losses.py) — no GPU required for that, just torch.
 
 # install this package itself (src/adbench) in editable mode
 -e .
@@ -14,8 +19,10 @@ datasets>=2.19
 pandas>=2.2
 pyyaml>=6.0
 jsonschema>=4.22
-transformers>=4.42      # tokenizer-only usage locally (no torch needed): dataset
-                        # prep and scripts/verify_tokenizer_compatibility.py
+transformers>=4.42      # tokenizer-only usage locally (no torch training needed):
+                        # dataset prep and scripts/verify_tokenizer_compatibility.py
+torch>=2.2              # CPU build here — see note above. training/losses.py's
+                        # KD+SFT loss math is unit-tested with dummy CPU tensors.
 
 # harness / eval
 tqdm>=4.66
