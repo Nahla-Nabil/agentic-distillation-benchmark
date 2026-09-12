@@ -109,6 +109,7 @@ def test_run_task_single_step_success():
     assert state.steps[0].succeeded is True
     assert state.steps[0].tool_name == "get_weather"
     assert state.steps[0].recovered_from_error is False
+    assert state.steps[0].error_type is None
 
 
 # --- run_task: multi-step success ---
@@ -180,6 +181,7 @@ def test_run_task_recovers_from_protocol_error():
     assert state.final_success is True
     assert state.steps[0].succeeded is True
     assert state.steps[0].recovered_from_error is True
+    assert state.steps[0].error_type is None  # cleared once the step ultimately succeeds
     assert calls["n"] == 2
 
 
@@ -223,6 +225,7 @@ def test_run_task_fails_after_exhausting_retries_on_wrong_tool():
     assert len(state.steps) == 1
     assert state.steps[0].succeeded is False
     assert state.steps[0].error is not None
+    assert state.steps[0].error_type == "WrongToolError"
 
 
 def test_run_task_stops_at_first_unrecoverable_step():
@@ -242,6 +245,7 @@ def test_run_task_stops_at_first_unrecoverable_step():
 
     assert state.final_success is False
     assert len(state.steps) == 1
+    assert state.steps[0].error_type == "MalformedCallError"
 
 
 def test_run_task_exhausts_retries_on_persistent_injected_error():
@@ -260,3 +264,4 @@ def test_run_task_exhausts_retries_on_persistent_injected_error():
 
     assert state.final_success is False
     assert state.steps[0].succeeded is False
+    assert state.steps[0].error_type == "ToolExecutionError"

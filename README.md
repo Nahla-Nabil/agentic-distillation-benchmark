@@ -129,7 +129,10 @@ src/adbench/
                            (KD+SFT loss) — config/loss/data-formatting logic
                            unit-tested locally; the training loop itself needs
                            Colab/GPU
-  evaluation/             Runs all 3 conditions through the harness, scores them
+  evaluation/             run_eval.py (all 3 conditions x all chain lengths +
+                           perplexity, one pass) + metrics.py (scoring) +
+                           perplexity.py — same unit-tested-locally split as
+                           training/; only checkpoint loading needs Colab/GPU
   analysis/               Teacher/student activation comparison utilities
 notebooks/                Colab notebooks that drive the GPU-heavy steps
 tests/                    Unit tests (harness, losses, training config/data
@@ -190,11 +193,49 @@ CPU torch and fake/stub models — no GPU, no Unsloth, no real Qwen weights
 loop over the real 14B/4B models needs Colab; see `train.py`'s module
 docstring for exactly where that boundary is.
 
+## Evaluation
+
+`src/adbench/evaluation/run_eval.py` runs all three conditions x all three
+chain lengths + perplexity in one pass:
+```bash
+python -m adbench.evaluation.run_eval              # all 3 conditions
+python -m adbench.evaluation.run_eval --condition sft_only   # just one
+```
+For each condition: load its checkpoint (same convention as `train.py` —
+`base` has one too, an untrained adapter, so all three load identically),
+run every `harness.tasks.load_tasks(chain_length, source="synthetic")` task
+through `executor.run_task()`, and compute perplexity on the wikitext
+sample (`adbench.data.general_eval` — run once first). Writes
+`results/eval_results.jsonl` (full per-task, per-step detail),
+`results/eval_results.csv` (the same, flattened — summary columns plus a
+`steps_json` column so nothing is lost), and `results/eval_summary.json`
+(metrics per condition x chain length, `evaluation/metrics.py`).
+
+**Design decision, flagged during scoping:** how to credit a step that
+succeeds after a retry (e.g. recovering from an injected error). Full
+credit in the primary metric (`per_step_success_rate`) — matches the literal
+"of all calls attempted, how many were valid" framing, since a partial-credit
+fraction would need its own arbitrary justification — but `clean_step_success_rate`
+(succeeded with *no* retry) and `recovery_rate` (of steps forced to fail by
+an injected error, how many still succeeded) are reported as *separate*
+metrics rather than blended in, specifically so a difference between
+"eventually gets it right" and "gets it right immediately" isn't hidden by
+one number. Full reasoning, plus a survivorship-bias caveat on pooling
+per-step rates across a chain, in `metrics.py`'s module docstring.
+
+Metrics, the model_fn wiring (prompt → generate → decode-new-tokens-only),
+and the harness-run loop are unit-tested locally with fake/scripted models —
+no GPU (`tests/test_run_eval.py`, `tests/test_metrics.py`,
+`tests/test_perplexity.py`). Only checkpoint loading needs Colab.
+
+Also fixed along the way: the classic `wikitext` HF repo's loading script is
+no longer supported by `datasets` >= 4 (raises `HfUriError`) — switched to
+the maintained `Salesforce/wikitext` mirror (`configs/experiment.yaml`).
+
 ## Status
 
-Harness, dataset prep, and training are implemented and tested; evaluation
-(`evaluation/run_eval.py`) and layer analysis (`analysis/layer_analysis.py`)
-remain TODOs.
+Harness, dataset prep, training, and evaluation are implemented and tested;
+layer analysis (`analysis/layer_analysis.py`) remains a TODO.
 
 Resolved design questions:
 - **Tokenizer compatibility (teacher/student)** — verified shared
@@ -221,7 +262,13 @@ Resolved design questions:
   loss is implemented and thoroughly unit-tested (dummy tensors, every
   weighting edge case). See "Training" above for what's unit-tested locally
   vs what needs Colab.
-- 216 tests passing (`pytest`), ruff-clean, no GPU needed (2 tests touch
+- **Evaluation complete** — `evaluation/run_eval.py` runs all three
+  conditions x all three chain lengths + perplexity in one pass;
+  `evaluation/metrics.py` implements full-chain/per-step success rate,
+  clean-vs-recovered step crediting, recovery rate, and error-type
+  breakdown. See "Evaluation" above for the per-step-crediting design
+  decision and what's unit-tested locally vs what needs Colab.
+- 272 tests passing (`pytest`), ruff-clean, no GPU needed (2 tests touch
   network once, to check against the real Qwen tokenizer, and skip cleanly
   if it's unreachable).
 

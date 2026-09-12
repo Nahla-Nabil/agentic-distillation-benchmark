@@ -94,10 +94,14 @@ regenerate locally to see the current numbers.
 
 ## General LM eval sample
 
-`data/general_eval/wikitext2_sample.jsonl` — a small sample of
-[wikitext-2-raw-v1](https://huggingface.co/datasets/wikitext) used as the
-*non-agentic* comparison baseline (perplexity), kept deliberately separate
-from the Glaive split above since that's entirely tool-calling text. Built
-by `python -m adbench.data.general_eval` (see
+`data/general_eval/wikitext2_sample.jsonl` — a small sample (200 chunks,
+filtered to those with >= 10 words so blank lines and bare headings like
+" = = Career = = " don't dilute the sample) of
+[wikitext-2-raw-v1](https://huggingface.co/datasets/Salesforce/wikitext)
+used as the *non-agentic* comparison baseline (perplexity), kept
+deliberately separate from the Glaive split above since that's entirely
+tool-calling text. Built by `python -m adbench.data.general_eval` (see
 [configs/experiment.yaml](../configs/experiment.yaml):`general_lm_eval`).
+Sourced from `Salesforce/wikitext`, not the classic `wikitext` repo — the
+latter's loading script is no longer supported by `datasets` >= 4.
 Also gitignored — regenerate locally.

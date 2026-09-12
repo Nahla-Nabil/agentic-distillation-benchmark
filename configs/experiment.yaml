@@ -95,10 +95,18 @@ harness:
 general_lm_eval:
   metric: perplexity
   source:
-    hf_dataset: wikitext
+    # NOT "wikitext" — that repo's loading script is no longer supported by
+    # `datasets` >= 4 (raises HfUriError at load time). "Salesforce/wikitext"
+    # is the maintained, script-free mirror with identical configs/content —
+    # see adbench.data.general_eval's module docstring.
+    hf_dataset: Salesforce/wikitext
     hf_config: wikitext-2-raw-v1
     split: test
+  min_word_count: 10            # drops blank lines and heading-only rows
+                                 # (e.g. " = = Career = = ") — see
+                                 # adbench.data.general_eval's docstring
   n_samples: 200                # number of held-out text chunks to eval on
+  seed: 42
   eval_set: data/general_eval/wikitext2_sample.jsonl
 
 # Layer-wise activation comparison (deliverable #5).

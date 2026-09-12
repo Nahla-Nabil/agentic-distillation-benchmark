@@ -57,11 +57,22 @@ class FinalAnswer:
 
 @dataclass
 class StepOutcome:
+    """error_type is the exception CLASS NAME (e.g. "WrongToolError",
+    "MalformedCallError") of the step's *last* attempt — None if it
+    succeeded outright. A failed step's error_type/error reflect only its
+    final (retries-exhausted) attempt, even if earlier attempts on the same
+    step failed differently. Used by evaluation/metrics.py's
+    error_breakdown() to categorize failures by harness.errors' exception
+    hierarchy (protocol vs tool-execution) without re-parsing free-text
+    error messages.
+    """
+
     step_index: int
     tool_name: str | None
     succeeded: bool
     recovered_from_error: bool = False
     error: str | None = None
+    error_type: str | None = None
 
 
 @dataclass
@@ -143,6 +154,7 @@ def _run_step(
     expected_name = expected_sequence[step_index] if step_index < len(expected_sequence) else None
 
     last_error: str | None = None
+    last_error_type: str | None = None
     tool_name_attempted: str | None = None
 
     for attempt in range(max_retries + 1):
@@ -174,6 +186,7 @@ def _run_step(
 
         except HarnessError as e:
             last_error = str(e)
+            last_error_type = type(e).__name__
             state.messages.append({"role": "tool", "content": f"ERROR: {last_error}"})
             continue
 
@@ -185,6 +198,7 @@ def _run_step(
             succeeded=True,
             recovered_from_error=(attempt > 0),
             error=None,
+            error_type=None,
         )
 
     return StepOutcome(
@@ -193,6 +207,7 @@ def _run_step(
         succeeded=False,
         recovered_from_error=False,
         error=last_error,
+        error_type=last_error_type,
     )
 
 
