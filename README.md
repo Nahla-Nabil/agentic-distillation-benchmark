@@ -232,10 +232,61 @@ Also fixed along the way: the classic `wikitext` HF repo's loading script is
 no longer supported by `datasets` >= 4 (raises `HfUriError`) — switched to
 the maintained `Salesforce/wikitext` mirror (`configs/experiment.yaml`).
 
+## Layer analysis
+
+`src/adbench/analysis/layer_analysis.py` compares teacher (Qwen3-14B) vs a
+trained student checkpoint's activations layer by layer — the paper's key
+mechanistic figure ("which layers does the gap originate from"). Run via
+`notebooks/04_layer_analysis.ipynb`.
+
+**Architecture, verified before writing any hooking code** (not assumed —
+see `configs/models.yaml`'s `layer_alignment` comment): teacher has 40
+layers, hidden_size 5120; student has 36 layers, hidden_size 2560. Both
+depth *and* width differ. Each transformer block's `.self_attn.o_proj`
+(attention output) and `.mlp.down_proj` (FFN output) are hooked separately
+— confirmed exact module names by reading `transformers`' own
+`modeling_qwen3.py` source, not by guessing from a different model family.
+`find_decoder_layers()` locates them by name pattern rather than a
+hardcoded attribute chain, so it keeps working under PEFT/Unsloth's extra
+wrapper layers.
+
+**Flagged design decision — why cosine distance isn't literally "cosine
+between two activation vectors" here:** with hidden sizes 5120 vs 2560,
+raw-vector cosine similarity is undefined (no valid way to compare vectors
+of different length). Both metrics instead operate on (n x n)
+sample-pairwise structure, which stays valid across differing widths — CKA
+(Kornblith et al.) via Gram matrices, and cosine distance via each model's
+*own* pairwise-cosine-similarity matrix (representational similarity
+analysis) compared to the other's. Reported side by side as each other's
+robustness check, not because either is known to be more correct here.
+Both are verified against synthetic tensors with known analytic answers
+(identical inputs → 0 divergence; independent random inputs → high
+divergence; invariant to rotating either side independently, even at
+different widths — the exact property this comparison depends on).
+
+**Memory, flagged per the eval spec:** loading a 14B and a 4B model
+simultaneously on a free T4 (16GB) is tight and risky once activation
+memory is added on top of ~9.5-10.5GB of 4-bit base weights. Resolved by
+never doing it: `extract_and_cache_activations()` loads one model at a
+time, writes its activations to disk, and the caller frees it before
+loading the other; `compare_cached_activations()` only needs the two
+resulting files. Two probe sets — Glaive test-split text (`tool_use`) and
+the wikitext sample (`general`, same file `evaluation/perplexity.py` uses)
+— so tool-use-specific divergence can be told apart from generic
+distillation drift.
+
+51 tests: the divergence metrics against synthetic tensors with known
+answers, and the hooking/extraction pipeline against a fake nn.Module
+(mirroring Qwen3's real module structure, including one test wrapped in
+extra nesting to mimic PEFT) — no GPU, no real model weights needed for any
+of it. Only the actual extraction from a real checkpoint needs Colab.
+
 ## Status
 
-Harness, dataset prep, training, and evaluation are implemented and tested;
-layer analysis (`analysis/layer_analysis.py`) remains a TODO.
+All six deliverables — harness, dataset prep, training, evaluation, and
+layer analysis — are implemented and tested. The full pipeline is ready to
+run end to end on Colab: `01_data_prep` → `02_training` → `03_evaluate` →
+`04_layer_analysis`.
 
 Resolved design questions:
 - **Tokenizer compatibility (teacher/student)** — verified shared
@@ -268,7 +319,14 @@ Resolved design questions:
   clean-vs-recovered step crediting, recovery rate, and error-type
   breakdown. See "Evaluation" above for the per-step-crediting design
   decision and what's unit-tested locally vs what needs Colab.
-- 272 tests passing (`pytest`), ruff-clean, no GPU needed (2 tests touch
+- **Layer analysis complete** — `analysis/layer_analysis.py` hooks
+  attention/FFN outputs at every layer (module names verified against
+  `transformers`' own Qwen3 source, not assumed), compares teacher vs any
+  student checkpoint via CKA and an RSA-style cosine distance (both needed
+  since hidden sizes differ — see "Layer analysis" above), on both a
+  tool-use and a general probe set, without ever holding both models in
+  GPU memory at once.
+- 323 tests passing (`pytest`), ruff-clean, no GPU needed (2 tests touch
   network once, to check against the real Qwen tokenizer, and skip cleanly
   if it's unreachable).
 

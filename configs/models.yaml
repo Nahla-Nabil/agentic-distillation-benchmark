@@ -45,8 +45,28 @@ student:
       - down_proj
 
 # Layer-analysis notebook needs to know how to line up teacher/student layers
-# even though they have different depths/hidden sizes — filled in once we
-# confirm each model's actual config (num_hidden_layers, hidden_size).
+# even though they have different depths/hidden sizes.
+#
+# VERIFIED (via transformers.AutoConfig — config.json only, no weights
+# downloaded) 2026-09:
+#   Qwen3-14B:               num_hidden_layers=40, hidden_size=5120
+#   Qwen3-4B-Instruct-2507:  num_hidden_layers=36, hidden_size=2560
+# Both depth AND width differ, which is why cosine distance can't be taken
+# directly between raw activation vectors (5120-dim vs 2560-dim) — see
+# analysis/layer_analysis.py's module docstring for how it's handled instead.
+#
+# VERIFIED module structure (transformers.models.qwen3.modeling_qwen3, same
+# installed package version used everywhere else, no weights needed):
+# Qwen3ForCausalLM.model is a Qwen3Model with a `.layers` ModuleList of
+# Qwen3DecoderLayer, each with `.self_attn.o_proj` (attention output
+# projection) and `.mlp.down_proj` (FFN/MLP output projection) — the
+# standard Llama-family layout. analysis/layer_analysis.py hooks these two
+# submodules per layer to capture "attention output" and "FFN output"
+# separately, not the combined residual stream. Found by locating modules
+# whose name matches `...layers.<N>` via named_modules() (not a hardcoded
+# attribute chain), so this keeps working if PEFT/Unsloth add wrapper
+# attributes (e.g. `base_model.model.model.layers.0`) around the same
+# underlying architecture.
 layer_alignment:
   strategy: uniform_span  # map student layer i -> teacher layer round(i * teacher_layers/student_layers)
   compare:

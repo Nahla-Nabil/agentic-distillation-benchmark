@@ -110,8 +110,33 @@ general_lm_eval:
   eval_set: data/general_eval/wikitext2_sample.jsonl
 
 # Layer-wise activation comparison (deliverable #5).
+#
+# Two probe input sets, compared separately (analysis/layer_analysis.py
+# tags every result row with which one it's from):
+#   tool_use: the Glaive TEST split (data/splits/test.jsonl, real tool-call
+#     text, formatted identically to training via
+#     training.train.format_training_example) — held out from the
+#     student's fine-tuning, same discipline as evaluation/run_eval.py.
+#   general: the wikitext sample (data/general_eval/, same file
+#     evaluation/perplexity.py uses) — the control: divergence here that
+#     ALSO shows up on tool_use is generic distillation drift, not
+#     tool-use-specific.
+#
+# Metrics: cka (Kornblith et al. linear CKA) and cosine_distance. Both are
+# needed BECAUSE teacher/student hidden sizes differ (5120 vs 2560 — see
+# configs/models.yaml) — plain cosine similarity between raw activation
+# vectors isn't defined across mismatched dimensions, so cosine_distance
+# here is computed between each model's own token-pair similarity
+# structure (RSA-style), not raw vectors; see layer_analysis.py's module
+# docstring for the full reasoning. Reported side by side as a robustness
+# check on each other, not because either alone is known to be more
+# correct for this comparison.
 layer_analysis:
   n_probe_examples: 50
+  probe_max_length: 128          # tokens per probe text (truncated if longer)
+  seed: 42
   divergence_metrics:
     - cka
     - cosine_distance
+  cache_dir: results/layer_analysis/activation_cache/
+  results_path: results/layer_analysis/divergence.jsonl
