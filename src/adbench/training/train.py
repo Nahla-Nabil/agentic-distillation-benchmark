@@ -379,6 +379,34 @@ def load_teacher(models_config: dict[str, Any]):
     return model
 
 
+def free_gpu_memory() -> None:
+    """Release cached CUDA memory back to the allocator after the caller has
+    already `del`-ed its own model reference(s).
+
+    Without this, sequentially calling train_condition() for
+    base/sft_only/distilled in one Colab session (as
+    notebooks/02_training.ipynb does) leaks each condition's student (and
+    the teacher, for distilled) — PyTorch's CUDA caching allocator doesn't
+    return freed tensors' memory to the driver on its own, so by the time
+    distilled tries to load the 14B teacher alongside a fresh student, the
+    still-cached base/sft_only students have left too little free VRAM,
+    and accelerate silently offloads teacher layers to CPU/disk — which
+    then fails validate_environment()'s "4-bit modules can't split across
+    CPU/GPU" check inside bitsandbytes.
+
+    Note: `del`-ing the caller's own variable is required *before* calling
+    this — a function can't drop its caller's references by taking the
+    object as an argument and deleting the local parameter, since that only
+    removes the function's own binding, not the caller's.
+    """
+    import gc
+
+    import torch
+
+    gc.collect()
+    torch.cuda.empty_cache()
+
+
 def save_checkpoint(model, tokenizer, checkpoint_dir: Path) -> None:
     """Save the LoRA adapter (+ tokenizer) for this condition.
 
@@ -503,6 +531,8 @@ def train_condition(
 
     if condition == "base":
         save_checkpoint(student, tokenizer, cfg.checkpoint_dir)
+        del student
+        free_gpu_memory()
         return {"condition": condition, "checkpoint_dir": str(cfg.checkpoint_dir), "steps": 0}
 
     teacher = load_teacher(models_config) if cfg.kd.kd_weight > 0 else None
@@ -519,6 +549,11 @@ def train_condition(
 
     save_checkpoint(student, tokenizer, cfg.checkpoint_dir)
     write_loss_log(log, loss_log_path(condition, sweep_name))
+
+    del student
+    if teacher is not None:
+        del teacher
+    free_gpu_memory()
 
     return {
         "condition": condition, "checkpoint_dir": str(cfg.checkpoint_dir),
