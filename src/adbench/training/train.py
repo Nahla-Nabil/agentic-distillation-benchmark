@@ -350,6 +350,15 @@ def load_student(models_config: dict[str, Any]):
         model_name=student_cfg["hf_id"],
         max_seq_length=student_cfg["max_seq_length"],
         load_in_4bit=student_cfg["load_in_4bit"],
+        # Force the whole model onto GPU 0 rather than accelerate's
+        # "auto" device_map, which — once VRAM gets at all tight after
+        # loading two 4-bit models on a T4 — silently splits a few
+        # modules onto CPU/disk instead, and bitsandbytes then refuses
+        # to run a 4-bit model that isn't fully GPU-resident. Forcing
+        # this turns "silently split and crash inside a later forward
+        # pass" into an upfront, actionable CUDA OOM if it truly doesn't
+        # fit.
+        device_map={"": 0},
     )
     lora_cfg = student_cfg["lora"]
     model = FastLanguageModel.get_peft_model(
@@ -372,6 +381,9 @@ def load_teacher(models_config: dict[str, Any]):
         model_name=teacher_cfg["hf_id"],
         max_seq_length=teacher_cfg["max_seq_length"],
         load_in_4bit=teacher_cfg["load_in_4bit"],
+        # See load_student()'s comment — same reasoning applies here, and
+        # matters more since the teacher is the larger of the two models.
+        device_map={"": 0},
     )
     model.eval()
     for p in model.parameters():
