@@ -450,9 +450,10 @@ def run_training_loop(student, teacher, examples: list[dict[str, list[int]]], cf
         for batch_start in range(0, len(order) - batch_size + 1, batch_size):
             batch_indices = order[batch_start : batch_start + batch_size]
             batch = _pad_batch([examples[i] for i in batch_indices], pad_token_id)
-            input_ids = torch.tensor(batch["input_ids"])
-            attention_mask = torch.tensor(batch["attention_mask"])
-            labels = torch.tensor(batch["labels"])
+            device = next(student.parameters()).device
+            input_ids = torch.tensor(batch["input_ids"], device=device)
+            attention_mask = torch.tensor(batch["attention_mask"], device=device)
+            labels = torch.tensor(batch["labels"], device=device)
 
             loss, components = training_step(student, teacher, input_ids, attention_mask, labels, cfg.kd)
             (loss / cfg.gradient_accumulation_steps).backward()
