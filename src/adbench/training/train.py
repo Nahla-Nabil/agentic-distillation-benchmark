@@ -207,8 +207,17 @@ def training_step(student, teacher, input_ids, attention_mask, labels, cfg: KDLo
     if cfg.kd_weight > 0:
         if teacher is None:
             raise ValueError("cfg.kd_weight > 0 but no teacher model was provided.")
+        # The teacher may live on a different GPU than the student (see
+        # load_teacher()'s docstring — a 2-GPU runtime puts it on GPU 1),
+        # so move the inputs there for its forward pass and move its
+        # output back before combined_loss touches both tensors together.
+        # A no-op .to() either way on a single-GPU runtime.
+        teacher_device = next(teacher.parameters()).device
         with torch.no_grad():
-            teacher_logits = _logits_of(teacher(input_ids=input_ids, attention_mask=attention_mask))
+            teacher_logits = _logits_of(
+                teacher(input_ids=input_ids.to(teacher_device), attention_mask=attention_mask.to(teacher_device))
+            )
+            teacher_logits = teacher_logits.to(student_logits.device)
 
     return combined_loss(student_logits, teacher_logits, labels, cfg)
 
@@ -374,16 +383,24 @@ def load_student(models_config: dict[str, Any]):
 def load_teacher(models_config: dict[str, Any]):
     """Load the teacher model (inference-only — no LoRA, no gradients) via
     Unsloth. Only called when a condition's kd_weight > 0."""
+    import torch
     from unsloth import FastLanguageModel
 
     teacher_cfg = models_config["teacher"]
+    # On a 2-GPU runtime (e.g. Kaggle's free T4 x2), put the teacher on the
+    # *second* GPU so the two 4-bit models — and the student's training
+    # activations — never have to share one card's VRAM. On a single-GPU
+    # runtime (e.g. Colab's one T4) this falls back to GPU 0, same as
+    # load_student(); training_step() moves tensors between devices as
+    # needed so this works transparently either way.
+    teacher_device = 1 if torch.cuda.device_count() > 1 else 0
     model, _tokenizer = FastLanguageModel.from_pretrained(
         model_name=teacher_cfg["hf_id"],
         max_seq_length=teacher_cfg["max_seq_length"],
         load_in_4bit=teacher_cfg["load_in_4bit"],
-        # See load_student()'s comment — same reasoning applies here, and
-        # matters more since the teacher is the larger of the two models.
-        device_map={"": 0},
+        # See load_student()'s comment for why an explicit device_map is
+        # used at all here.
+        device_map={"": teacher_device},
     )
     model.eval()
     for p in model.parameters():
