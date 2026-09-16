@@ -61,16 +61,27 @@ def make_harness_model_fn(model, tokenizer, max_new_tokens: int = 256) -> ModelF
     model.generate() includes in its output by HF convention.
     """
 
+    # Unset the checkpoint's default max_length once here (not per call) —
+    # otherwise every single generate() call below warns that both
+    # max_new_tokens and the model's own generation_config.max_length are
+    # set, which floods the eval output with hundreds of identical,
+    # harmless warnings (one per task step).
+    model.generation_config.max_length = None
+
     def model_fn(messages: list[dict[str, Any]]) -> str:
         import torch
 
         prompt_text = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
-        input_ids = torch.tensor([tokenizer(prompt_text)["input_ids"]])
+        encoded = tokenizer(prompt_text, return_tensors="pt").to(model.device)
         with torch.no_grad():
-            output_ids = model.generate(input_ids=input_ids, max_new_tokens=max_new_tokens)
-        new_tokens = output_ids[0][input_ids.shape[1]:]
+            output_ids = model.generate(
+                input_ids=encoded["input_ids"],
+                attention_mask=encoded["attention_mask"],
+                max_new_tokens=max_new_tokens,
+            )
+        new_tokens = output_ids[0][encoded["input_ids"].shape[1] :]
         return tokenizer.decode(new_tokens)
 
     return model_fn

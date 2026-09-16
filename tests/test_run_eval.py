@@ -20,6 +20,16 @@ from adbench.training.train import REPO_ROOT, load_experiment_config
 
 # --- make_harness_model_fn: fake model + tokenizer ---
 
+class _StubBatchEncoding(dict):
+    """Minimal stand-in for HF's BatchEncoding — just enough of its
+    interface (dict-style item access + a `.to(device)` that's a no-op
+    here) for make_harness_model_fn's `encoded["input_ids"]` /
+    `.to(model.device)` calls."""
+
+    def to(self, device):
+        return self
+
+
 class _StubTokenizer:
     """Same word-level pseudo-tokenizer pattern as tests/test_train.py, with
     a decode() that just joins ids back to their original words."""
@@ -42,13 +52,23 @@ class _StubTokenizer:
             text += " <assistant>"
         return text
 
-    def __call__(self, text, add_special_tokens=False):
-        return {"input_ids": [self._token_id(w) for w in text.split()]}
+    def __call__(self, text, add_special_tokens=False, return_tensors=None):
+        ids = [self._token_id(w) for w in text.split()]
+        if return_tensors == "pt":
+            return _StubBatchEncoding(
+                input_ids=torch.tensor([ids]),
+                attention_mask=torch.ones((1, len(ids)), dtype=torch.long),
+            )
+        return {"input_ids": ids}
 
     def decode(self, token_ids):
         if hasattr(token_ids, "tolist"):
             token_ids = token_ids.tolist()
         return " ".join(self._reverse[i] for i in token_ids)
+
+
+class _StubGenerationConfig:
+    max_length: int | None = 262144
 
 
 class _FakeGenerateModel:
@@ -58,8 +78,10 @@ class _FakeGenerateModel:
 
     def __init__(self, completion_ids: list[int]):
         self.completion_ids = completion_ids
+        self.device = "cpu"
+        self.generation_config = _StubGenerationConfig()
 
-    def generate(self, input_ids, max_new_tokens=256):
+    def generate(self, input_ids, attention_mask=None, max_new_tokens=256):
         completion = torch.tensor([self.completion_ids[:max_new_tokens]])
         return torch.cat([input_ids, completion], dim=1)
 
