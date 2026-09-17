@@ -127,12 +127,28 @@ def run_perplexity_for_condition(model, tokenizer, experiment_config: dict[str, 
 # locally testable end-to-end; built from the tested functions above.
 # --------------------------------------------------------------------------
 
-def load_condition_model(condition: str, experiment_config: dict[str, Any], models_config: dict[str, Any]):
+def load_condition_model(
+    condition: str,
+    experiment_config: dict[str, Any],
+    models_config: dict[str, Any],
+    use_fast_inference: bool = True,
+):
     """Load a condition's saved checkpoint (training/train.py::save_checkpoint)
     for inference. Every condition — including "base" — has a checkpoint to
     load from (a freshly-initialized, untrained adapter for "base"), so this
     is the one loading path for all three conditions; see train.py's
-    save_checkpoint() docstring for why."""
+    save_checkpoint() docstring for why.
+
+    use_fast_inference=True (the default, used by evaluate_condition() above)
+    switches the model into Unsloth's fast-generation mode via
+    FastLanguageModel.for_inference() — but that mode runs attention/MLP
+    through fused kernels instead of the plain self_attn.o_proj/mlp.down_proj
+    submodule calls, which means torch's register_forward_hook on those
+    submodules never fires. analysis/layer_analysis.py's activation
+    extraction depends on exactly those hooks firing, so it must load with
+    use_fast_inference=False — passing True there doesn't error, it just
+    silently captures nothing, which is worse.
+    """
     from unsloth import FastLanguageModel
 
     checkpoint_dir = resolve_checkpoint_dir(experiment_config, condition)
@@ -147,7 +163,8 @@ def load_condition_model(condition: str, experiment_config: dict[str, Any], mode
         max_seq_length=student_cfg["max_seq_length"],
         load_in_4bit=student_cfg["load_in_4bit"],
     )
-    FastLanguageModel.for_inference(model)
+    if use_fast_inference:
+        FastLanguageModel.for_inference(model)
     return model, tokenizer
 
 
