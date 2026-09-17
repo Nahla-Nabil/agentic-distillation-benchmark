@@ -141,13 +141,18 @@ def load_condition_model(
 
     use_fast_inference=True (the default, used by evaluate_condition() above)
     switches the model into Unsloth's fast-generation mode via
-    FastLanguageModel.for_inference() — but that mode runs attention/MLP
-    through fused kernels instead of the plain self_attn.o_proj/mlp.down_proj
-    submodule calls, which means torch's register_forward_hook on those
-    submodules never fires. analysis/layer_analysis.py's activation
-    extraction depends on exactly those hooks firing, so it must load with
-    use_fast_inference=False — passing True there doesn't error, it just
-    silently captures nothing, which is worse.
+    FastLanguageModel.for_inference() — a real speed difference for
+    generation, but NOT what determines whether torch's
+    register_forward_hook fires on self_attn.o_proj/mlp.down_proj: loading
+    a LoRA checkpoint through Unsloth patches every layer's attention/MLP
+    into a fused kernel at FastLanguageModel.get_peft_model() time — i.e.
+    at LOAD time, independent of this flag — so those submodules are never
+    called as plain nn.Module.forward() either way, and
+    register_forward_hook on them never fires.
+    analysis/layer_analysis.py's activation extraction depends on exactly
+    those hooks firing, so it does NOT use this function at all — see
+    layer_analysis.load_student_checkpoint_for_extraction(), which loads
+    via plain transformers + peft (no Unsloth) instead.
     """
     from unsloth import FastLanguageModel
 

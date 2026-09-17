@@ -186,6 +186,54 @@ def extract_activations(
     return recorder.stacked()
 
 
+def load_student_checkpoint_for_extraction(
+    condition: str, experiment_config: dict[str, Any], models_config: dict[str, Any]
+):
+    """Load a trained student checkpoint for activation extraction, via
+    plain transformers + peft — deliberately NOT Unsloth's
+    FastLanguageModel (which evaluation/run_eval.py's load_condition_model()
+    uses for eval/generation).
+
+    Loading a LoRA checkpoint through Unsloth patches every decoder layer's
+    attention/MLP forward into a fused kernel at FastLanguageModel.
+    get_peft_model() time (the "Unsloth patched N layers with N QKV layers,
+    N O layers and N MLP layers" message) — this happens at LOAD time, not
+    per-call, so it happens regardless of for_inference()/for_training()
+    mode. That fused path computes attention/MLP directly rather than by
+    calling self_attn.o_proj/mlp.down_proj as plain nn.Module.forward(), so
+    extract_activations()'s register_forward_hook on those submodules never
+    fires — every pooled list stays empty, and np.stack([]) raises "need at
+    least one array to stack". Loading through plain
+    transformers.AutoModelForCausalLM + peft.PeftModel keeps the standard
+    per-submodule forward() calls the hooks depend on.
+    """
+    import torch
+    from peft import PeftModel
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+
+    from adbench.training.train import resolve_checkpoint_dir
+
+    checkpoint_dir = resolve_checkpoint_dir(experiment_config, condition)
+    if not checkpoint_dir.exists():
+        raise FileNotFoundError(
+            f"No checkpoint for condition {condition!r} at {checkpoint_dir} — "
+            "run `python -m adbench.training.train --condition ...` first."
+        )
+    student_cfg = models_config["student"]
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=student_cfg["load_in_4bit"],
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.float16,
+    )
+    base_model = AutoModelForCausalLM.from_pretrained(
+        student_cfg["hf_id"], quantization_config=bnb_config, device_map={"": 0}
+    )
+    model = PeftModel.from_pretrained(base_model, str(checkpoint_dir))
+    model.eval()
+    tokenizer = AutoTokenizer.from_pretrained(student_cfg["hf_id"])
+    return model, tokenizer
+
+
 # --------------------------------------------------------------------------
 # Layer alignment — teacher and student have different depths.
 # --------------------------------------------------------------------------
