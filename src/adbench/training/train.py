@@ -238,6 +238,9 @@ def training_step(student, teacher, input_ids, attention_mask, labels, cfg: KDLo
 # tokenizer (network, no GPU) — see tests/test_train.py for both.
 # --------------------------------------------------------------------------
 
+_EMPTY_THINK_BLOCK = "<think>\n\n</think>\n\n"
+
+
 def format_training_example(record: dict[str, Any], tokenizer, tool_registry) -> dict[str, list[int]]:
     """One data/prepare.py-produced record -> a tokenized training example
     with the prompt portion (system + user message, and the chat template's
@@ -280,6 +283,14 @@ def format_training_example(record: dict[str, Any], tokenizer, tool_registry) ->
         [*messages, {"role": "assistant", "content": assistant_completion}],
         tokenize=False, add_generation_prompt=False,
     )
+    # Some Qwen3 chat templates render a finished assistant turn as an empty
+    # <think></think> block followed by the content, but never put that block in the
+    # generation prompt eval uses. Training on it teaches the model to open
+    # with a think stub it is never prompted for, and it then emits stray
+    # <think>/</tool_call> fragments instead of a clean tool call. Drop it so
+    # the training target is exactly what the model is asked to produce.
+    if full_text.startswith(prompt_text + _EMPTY_THINK_BLOCK):
+        full_text = prompt_text + full_text[len(prompt_text) + len(_EMPTY_THINK_BLOCK):]
 
     prompt_ids = tokenizer(prompt_text, add_special_tokens=False)["input_ids"]
     full_ids = tokenizer(full_text, add_special_tokens=False)["input_ids"]

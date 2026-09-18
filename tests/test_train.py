@@ -463,6 +463,33 @@ def test_format_training_example_different_tools_use_only_their_own_tool_in_syst
         assert other_tool not in tokenizer.last_prompt_text
 
 
+def test_format_training_example_drops_the_empty_think_block_templates_add():
+    """Some Qwen3 templates render a finished assistant turn as
+    '<think>' + blank lines + '</think>' + blank lines + content, but omit it from the generation
+    prompt; the training target must not include it."""
+    from adbench.harness.tools import build_glaive_registry
+
+    class _ThinkStubTokenizer(_StubTokenizer):
+        # Mirrors the real Qwen3 template's shape: the generation prompt ends
+        # in a newline, and a finished assistant turn is that same prompt
+        # followed directly by the empty think block, then the content.
+        def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False):
+            if add_generation_prompt:
+                return super().apply_chat_template(messages, tokenize, True) + "\n"
+            if messages[-1]["role"] == "assistant":
+                prompt = super().apply_chat_template(messages[:-1], tokenize, True) + "\n"
+                return prompt + "<think>\n\n</think>\n\n" + messages[-1]["content"] + " </assistant>\n"
+            return super().apply_chat_template(messages, tokenize, False)
+
+    tokenizer = _ThinkStubTokenizer()
+    example = format_training_example(_sample_record(), tokenizer, build_glaive_registry())
+    id_to_word = {i: w for w, i in tokenizer._vocab.items()}
+    words = [id_to_word[i] for i in example["input_ids"]]
+    assert not any("think" in w for w in words)
+    first_unmasked = next(i for i, v in enumerate(example["labels"]) if v != -100)
+    assert any("tool_call" in w for w in words[first_unmasked:])
+
+
 # --- format_training_example: real Qwen tokenizer (network, no GPU) ---
 #
 # The stub-tokenizer tests above verify format_training_example's masking
