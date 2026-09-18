@@ -468,6 +468,13 @@ def test_activation_cache_round_trip(tmp_path):
         np.testing.assert_allclose(loaded[i]["ffn"], acts[i]["ffn"])
 
 
+def test_load_activation_cache_accepts_the_extensionless_path_used_to_save(tmp_path):
+    acts = _acts(2, 5, 8)
+    save_activation_cache(acts, tmp_path / "cache")
+    loaded = load_activation_cache(tmp_path / "cache")  # same extension-less path, not the returned one
+    assert set(loaded) == {0, 1}
+
+
 def test_activation_cache_round_trip_with_explicit_npz_suffix(tmp_path):
     acts = _acts(1, 5, 8)
     path = save_activation_cache(acts, tmp_path / "cache.npz")

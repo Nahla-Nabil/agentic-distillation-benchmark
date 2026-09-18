@@ -411,6 +411,9 @@ def save_activation_cache(activations: dict[int, dict[str, np.ndarray]], path: s
 
 def load_activation_cache(path: str | Path) -> dict[int, dict[str, np.ndarray]]:
     loaded: dict[int, dict[str, np.ndarray]] = {}
+    path = Path(path)
+    if path.suffix != ".npz":
+        path = path.with_suffix(".npz")
     with np.load(path) as data:
         for key in data.files:
             layer_part, stream = key.split("__")
@@ -502,3 +505,82 @@ def compare_cached_activations(
     source_activations = load_activation_cache(source_cache_path)
     target_activations = load_activation_cache(target_cache_path)
     return compare_layers(source_activations, target_activations, layer_alignment, metrics, input_set)
+
+
+# --------------------------------------------------------------------------
+# CLI — one model per PROCESS. Unsloth monkeypatches transformers'/peft's
+# forward classes globally the moment it is imported, so once ANY earlier
+# cell in the same kernel has loaded a model through Unsloth (training,
+# eval, or the teacher below), even a model loaded through plain
+# transformers + peft is routed through Unsloth's fused forward — which
+# both bypasses the o_proj/down_proj hooks and raises NotImplementedError on
+# a model Unsloth did not load itself. A fresh interpreter that never
+# imports Unsloth avoids all of that, so each role is extracted in its own
+# subprocess (see notebooks/07_final.ipynb, section 4).
+# --------------------------------------------------------------------------
+
+def _extract_role(role: str, condition: str, experiment_config: dict[str, Any], models_config: dict[str, Any]) -> int:
+    """Extract + cache tool_use and general activations for one role
+    ("teacher" or "student"); returns that model's layer count."""
+    import gc
+    import sys
+
+    import torch
+    from transformers import AutoTokenizer
+
+    la_config = experiment_config["layer_analysis"]
+    cache_dir = REPO_ROOT / la_config["cache_dir"]
+    tool_use_texts = load_tool_use_probe_texts("configs/data.yaml", la_config["n_probe_examples"], la_config["seed"])
+    general_texts = load_general_probe_texts(experiment_config, la_config["n_probe_examples"])
+    # Teacher and student share the Qwen3 tokenizer vocabulary.
+    tokenizer = AutoTokenizer.from_pretrained(models_config["student"]["hf_id"])
+
+    if role == "student":
+        if "unsloth" in sys.modules:
+            raise RuntimeError(
+                "unsloth is already imported in this process — student activation "
+                "extraction must run in a fresh process without it."
+            )
+        model, _ = load_student_checkpoint_for_extraction(condition, experiment_config, models_config)
+    else:
+        from adbench.training.train import load_teacher
+        model = load_teacher(models_config)
+
+    n_layers = count_layers(model)
+    print(f"{role}: {n_layers} layers")
+    for name, texts in (("tool_use", tool_use_texts), ("general", general_texts)):
+        extract_and_cache_activations(
+            model, tokenizer, texts, cache_dir / f"{role}_{name}",
+            max_length=la_config["probe_max_length"],
+        )
+    del model
+    gc.collect()
+    torch.cuda.empty_cache()
+    return n_layers
+
+
+def main() -> None:
+    import argparse
+    import os
+    import sys
+
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    os.chdir(REPO_ROOT)
+
+    from adbench.training.train import CONDITIONS, load_experiment_config
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--role", choices=["teacher", "student"], required=True)
+    parser.add_argument("--condition", choices=CONDITIONS, default="distilled",
+                        help="Which trained student checkpoint to extract (role=student only).")
+    parser.add_argument("--experiment-config", default="configs/experiment.yaml")
+    parser.add_argument("--models-config", default="configs/models.yaml")
+    args = parser.parse_args()
+
+    experiment_config = load_experiment_config(args.experiment_config)
+    models_config = load_experiment_config(args.models_config)
+    _extract_role(args.role, args.condition, experiment_config, models_config)
+
+
+if __name__ == "__main__":
+    main()
