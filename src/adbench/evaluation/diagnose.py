@@ -29,6 +29,13 @@ from adbench.training.train import (
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--condition", choices=CONDITIONS, default="sft_only")
+    parser.add_argument(
+        "--loader", choices=["unsloth", "unsloth_nofast", "plain"], default="unsloth",
+        help="unsloth: what run_eval.py uses (FastLanguageModel + for_inference). "
+             "unsloth_nofast: same but without for_inference(). "
+             "plain: transformers + peft, Unsloth never imported (run in a fresh process).",
+    )
+    parser.add_argument("--skip-training-target", action="store_true")
     parser.add_argument("--n", type=int, default=3, help="Eval prompts to generate for.")
     parser.add_argument("--max-new-tokens", type=int, default=200)
     parser.add_argument("--experiment-config", default="configs/experiment.yaml")
@@ -37,20 +44,28 @@ def main() -> None:
 
     experiment_config = load_experiment_config(args.experiment_config)
     models_config = load_experiment_config(args.models_config)
-    model, tokenizer = load_condition_model(args.condition, experiment_config, models_config)
+    if args.loader == "plain":
+        from adbench.analysis.layer_analysis import load_student_checkpoint_for_extraction
+        model, tokenizer = load_student_checkpoint_for_extraction(
+            args.condition, experiment_config, models_config
+        )
+    else:
+        model, tokenizer = load_condition_model(
+            args.condition, experiment_config, models_config,
+            use_fast_inference=(args.loader == "unsloth"),
+        )
+    print(f"=== LOADER: {args.loader}, CONDITION: {args.condition} ===")
 
     # 1. What the model was trained to output (first training record).
-    data_config = load_experiment_config(REPO_ROOT / "configs" / "data.yaml")
-    train_path = REPO_ROOT / data_config["output"]["train_path"]
-    with open(train_path, encoding="utf-8") as f:
-        record = json.loads(f.readline())
-    example = format_training_example(record, tokenizer, build_glaive_registry())
-    trained_on = [t for t, label in zip(example["input_ids"], example["labels"]) if label != -100]
-    print("=== TRAINING TARGET (tokens with label != -100) ===")
-    print(repr(tokenizer.decode(trained_on)))
-    print("=== TRAINING PROMPT (masked) ===")
-    prompt_ids = [t for t, label in zip(example["input_ids"], example["labels"]) if label == -100]
-    print(repr(tokenizer.decode(prompt_ids)))
+    if not args.skip_training_target:
+        data_config = load_experiment_config(REPO_ROOT / "configs" / "data.yaml")
+        train_path = REPO_ROOT / data_config["output"]["train_path"]
+        with open(train_path, encoding="utf-8") as f:
+            record = json.loads(f.readline())
+        example = format_training_example(record, tokenizer, build_glaive_registry())
+        trained_on = [t for t, label in zip(example["input_ids"], example["labels"]) if label != -100]
+        print("=== TRAINING TARGET (tokens with label != -100) ===")
+        print(repr(tokenizer.decode(trained_on)))
 
     # 2. What the model generates on eval prompts.
     registry = build_demo_registry()
@@ -62,9 +77,10 @@ def main() -> None:
         ]
         raw = model_fn(messages)
         print(f"\n=== EVAL {task.task_id}: {task.user_goal!r} (expects {task.expected_tool_sequence}) ===")
-        print("RAW:", repr(raw))
+        print("RAW:", repr(raw[:300]))
         try:
-            print("PARSED:", parse_model_output(raw))
+            parsed = parse_model_output(raw)
+            print("PARSED:", type(parsed).__name__, str(parsed)[:200])
         except Exception as e:  # noqa: BLE001 — diagnostic printout only
             print("PARSE ERROR:", type(e).__name__, e)
 

@@ -224,7 +224,9 @@ def load_student_checkpoint_for_extraction(
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=student_cfg["load_in_4bit"],
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_compute_dtype=(
+            torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+        ),
     )
     base_model = AutoModelForCausalLM.from_pretrained(
         student_cfg["hf_id"], quantization_config=bnb_config, device_map={"": 0}
