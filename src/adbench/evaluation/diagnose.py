@@ -36,6 +36,11 @@ def main() -> None:
              "plain: transformers + peft, Unsloth never imported (run in a fresh process).",
     )
     parser.add_argument("--skip-training-target", action="store_true")
+    parser.add_argument(
+        "--require-tool-call", action="store_true",
+        help="Exit non-zero unless every generation parses as a tool call — a cheap guard "
+             "to run before a multi-hour eval.",
+    )
     parser.add_argument("--n", type=int, default=3, help="Eval prompts to generate for.")
     parser.add_argument("--max-new-tokens", type=int, default=200)
     parser.add_argument("--experiment-config", default="configs/experiment.yaml")
@@ -70,6 +75,7 @@ def main() -> None:
     # 2. What the model generates on eval prompts.
     registry = build_demo_registry()
     model_fn = make_harness_model_fn(model, tokenizer, max_new_tokens=args.max_new_tokens)
+    n_failed = 0
     for task in load_tasks(1, source="synthetic")[: args.n]:
         messages = [
             {"role": "system", "content": build_system_prompt(registry)},
@@ -81,8 +87,14 @@ def main() -> None:
         try:
             parsed = parse_model_output(raw)
             print("PARSED:", type(parsed).__name__, str(parsed)[:200])
+            if type(parsed).__name__ != "ToolCall":
+                n_failed += 1
         except Exception as e:  # noqa: BLE001 — diagnostic printout only
             print("PARSE ERROR:", type(e).__name__, e)
+            n_failed += 1
+
+    if args.require_tool_call and n_failed:
+        raise SystemExit(f"{n_failed}/{args.n} generations for {args.condition!r} were not a valid tool call.")
 
 
 if __name__ == "__main__":
