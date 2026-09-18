@@ -258,6 +258,38 @@ def test_training_step_accepts_raw_tensor_output_not_just_logits_attribute():
     assert torch.isfinite(loss)
 
 
+class _ScriptedLogitsLM(nn.Module):
+    """Returns fixed one-hot logits, so the loss depends only on how
+    training_step aligns logits with labels, not on any learned weights."""
+
+    def __init__(self, predicted_ids, vocab_size):
+        super().__init__()
+        self.register_buffer("logits", torch.nn.functional.one_hot(predicted_ids, vocab_size).float() * 20.0)
+
+    def forward(self, input_ids, attention_mask=None):
+        return _FakeOutput(self.logits)
+
+
+def test_training_step_scores_logits_against_the_NEXT_token():
+    vocab = 11
+    input_ids = torch.tensor([[3, 4, 5, 6, 7]])
+    attention_mask = torch.ones_like(input_ids)
+    labels = input_ids.clone()
+    cfg = KDLossConfig(kd_weight=0.0, sft_weight=1.0)
+
+    # A perfect next-token predictor: position t's logits favour input_ids[t+1].
+    next_token = torch.cat([input_ids[:, 1:], input_ids[:, :1]], dim=1)
+    perfect = _ScriptedLogitsLM(next_token, vocab)
+    # A copy predictor: position t's logits favour input_ids[t] itself.
+    copy = _ScriptedLogitsLM(input_ids, vocab)
+
+    perfect_loss, _ = training_step(perfect, None, input_ids, attention_mask, labels, cfg)
+    copy_loss, _ = training_step(copy, None, input_ids, attention_mask, labels, cfg)
+
+    assert perfect_loss.item() < 1e-3
+    assert copy_loss.item() > 10.0
+
+
 # --- compute_total_optimizer_steps ---
 #
 # Pulled out specifically because it's easy to get wrong by forgetting the

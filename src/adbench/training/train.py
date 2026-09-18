@@ -192,6 +192,13 @@ def training_step(student, teacher, input_ids, attention_mask, labels, cfg: KDLo
         this works with the real Unsloth-wrapped model AND a plain
         nn.Module test double.
 
+    Causal-LM shift: logits at position t predict the token at t+1, so
+    every logits tensor drops its last position and labels drop their first
+    before the loss (combined_loss deliberately does not shift — see its
+    docstring). Without this the model is trained to reproduce the token it
+    is currently looking at, which passes every finite-loss check but makes
+    generation degenerate into repeated tokens.
+
     Returns (loss, components) exactly as training/losses.py::combined_loss
     does — the caller (run_training_loop) calls loss.backward() and logs
     components.
@@ -201,7 +208,8 @@ def training_step(student, teacher, input_ids, attention_mask, labels, cfg: KDLo
     def _logits_of(output):
         return output.logits if hasattr(output, "logits") else output
 
-    student_logits = _logits_of(student(input_ids=input_ids, attention_mask=attention_mask))
+    student_logits = _logits_of(student(input_ids=input_ids, attention_mask=attention_mask))[:, :-1, :]
+    shifted_labels = labels[:, 1:]
 
     teacher_logits = None
     if cfg.kd_weight > 0:
@@ -216,10 +224,10 @@ def training_step(student, teacher, input_ids, attention_mask, labels, cfg: KDLo
         with torch.no_grad():
             teacher_logits = _logits_of(
                 teacher(input_ids=input_ids.to(teacher_device), attention_mask=attention_mask.to(teacher_device))
-            )
+            )[:, :-1, :]
             teacher_logits = teacher_logits.to(student_logits.device)
 
-    return combined_loss(student_logits, teacher_logits, labels, cfg)
+    return combined_loss(student_logits, teacher_logits, shifted_labels.to(student_logits.device), cfg)
 
 
 # --------------------------------------------------------------------------
