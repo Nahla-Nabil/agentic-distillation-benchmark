@@ -48,12 +48,21 @@ def compute_perplexity(model, tokenizer, texts: list[str], max_length: int = 512
     total_nll = 0.0
     total_tokens = 0
 
+    # A real nn.Module lives on a specific device and needs its inputs
+    # there too (without a multi-GPU dispatch hook to move them for us);
+    # a plain callable — the contract also allows one — has no parameters,
+    # so leave the tensor on the default device.
+    try:
+        device = next(model.parameters()).device
+    except (AttributeError, StopIteration):
+        device = None
+
     for text in texts:
         ids = tokenizer(text)["input_ids"][:max_length]
         if len(ids) < 2:
             continue
 
-        input_ids = torch.tensor([ids])
+        input_ids = torch.tensor([ids], device=device)
         with torch.no_grad():
             output = model(input_ids=input_ids)
         logits = output.logits if hasattr(output, "logits") else output
