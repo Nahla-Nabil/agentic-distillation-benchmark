@@ -100,6 +100,30 @@ def restore() -> bool:
     return True
 
 
+def check_upload() -> None:
+    """Fail fast if persistence is configured but cannot actually write — a
+    bad token or a read-only one would otherwise only show up as a warning
+    after hours of work that then cannot be resumed. No-op when persistence
+    is off."""
+    settings = _settings()
+    if settings is None:
+        return
+    repo, token, tag = settings
+    try:
+        api = _hf_api(token)
+        api.create_repo(repo_id=repo, repo_type="model", private=True, exist_ok=True)
+        api.upload_file(
+            path_or_fileobj=b"ok", path_in_repo=f"runs/{tag}/results/.write_check",
+            repo_id=repo, repo_type="model", commit_message="startup write check",
+        )
+    except Exception as e:  # noqa: BLE001
+        raise RuntimeError(
+            f"HF_TOKEN is set but writing to {repo!r} failed ({type(e).__name__}: {e}). "
+            "Use a token with Write access, or remove the HF_TOKEN secret to run without resume."
+        ) from e
+    print(f"[persist] ON — write access to {repo} confirmed (tag {tag!r}).")
+
+
 def push(message: str) -> bool:
     """Upload the persisted directories. Returns False (after a warning) on
     any failure, or when persistence is off."""

@@ -22,6 +22,9 @@ class _FakeApi:
     def create_repo(self, **kwargs):
         self.created.append(kwargs)
 
+    def upload_file(self, path_or_fileobj, path_in_repo, repo_id, **kwargs):
+        self.store[(repo_id, path_in_repo)] = path_or_fileobj
+
     def upload_folder(self, folder_path, path_in_repo, repo_id, **kwargs):
         from pathlib import Path
         root = Path(folder_path)
@@ -122,3 +125,31 @@ def test_upload_failure_only_warns(root, monkeypatch, capsys):
     ps.run_stage("s", lambda: None)  # must not raise
     assert ps.is_done("s")
     assert "upload failed" in capsys.readouterr().out
+
+
+def test_check_upload_noop_when_off(root):
+    ps.check_upload()  # must not raise
+
+
+def test_check_upload_confirms_write_access(root, monkeypatch, capsys):
+    store = {}
+    _enable_persistence(monkeypatch, store)
+    ps.check_upload()
+    assert ("user/repo", "runs/v1/results/.write_check") in store
+    assert "write access" in capsys.readouterr().out
+
+
+def test_check_upload_raises_on_unwritable_token(root, monkeypatch):
+    monkeypatch.setenv("HF_TOKEN", "readonly")
+    monkeypatch.setenv("ADBENCH_HF_REPO", "user/repo")
+
+    class _ReadOnlyApi:
+        def create_repo(self, **kwargs):
+            pass
+
+        def upload_file(self, **kwargs):
+            raise PermissionError("403 Forbidden")
+
+    monkeypatch.setattr(ps, "_hf_api", lambda token: _ReadOnlyApi())
+    with pytest.raises(RuntimeError, match="Write access"):
+        ps.check_upload()
