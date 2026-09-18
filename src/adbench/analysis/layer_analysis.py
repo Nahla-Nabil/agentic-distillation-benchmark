@@ -175,9 +175,10 @@ def extract_activations(
     recorder = _ActivationRecorder(all_layers)
     try:
         model.eval()
+        device = next(model.parameters()).device
         for text in texts:
             ids = tokenizer(text)["input_ids"][:max_length]
-            input_ids = torch.tensor([ids])
+            input_ids = torch.tensor([ids], device=device)
             with torch.no_grad():
                 model(input_ids=input_ids)
     finally:
