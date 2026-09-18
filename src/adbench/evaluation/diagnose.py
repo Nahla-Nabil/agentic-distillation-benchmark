@@ -41,6 +41,11 @@ def main() -> None:
         help="Exit non-zero unless every generation parses as a tool call — a cheap guard "
              "to run before a multi-hour eval.",
     )
+    parser.add_argument(
+        "--max-failures", type=int, default=0,
+        help="With --require-tool-call, how many non-tool-call generations to tolerate "
+             "(generation is sampled, so one odd sample should not abort a long run).",
+    )
     parser.add_argument("--n", type=int, default=3, help="Eval prompts to generate for.")
     parser.add_argument("--max-new-tokens", type=int, default=200)
     parser.add_argument("--experiment-config", default="configs/experiment.yaml")
@@ -93,7 +98,7 @@ def main() -> None:
             print("PARSE ERROR:", type(e).__name__, e)
             n_failed += 1
 
-    if args.require_tool_call and n_failed:
+    if args.require_tool_call and n_failed > args.max_failures:
         raise SystemExit(f"{n_failed}/{args.n} generations for {args.condition!r} were not a valid tool call.")
 
 
