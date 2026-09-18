@@ -550,15 +550,48 @@ def _extract_role(role: str, condition: str, experiment_config: dict[str, Any], 
 
     n_layers = count_layers(model)
     print(f"{role}: {n_layers} layers")
+    prefix = f"student_{condition}" if role == "student" else "teacher"
     for name, texts in (("tool_use", tool_use_texts), ("general", general_texts)):
         extract_and_cache_activations(
-            model, tokenizer, texts, cache_dir / f"{role}_{name}",
+            model, tokenizer, texts, cache_dir / f"{prefix}_{name}",
             max_length=la_config["probe_max_length"],
         )
     del model
     gc.collect()
     torch.cuda.empty_cache()
     return n_layers
+
+
+def compare_all_conditions(experiment_config: dict[str, Any], conditions: tuple[str, ...]) -> list[dict[str, Any]]:
+    """Compare every condition's cached student activations to the teacher's
+    (both input sets), tag each row with its `condition`, and write them all
+    to configs/experiment.yaml's layer_analysis.results_path. Conditions
+    whose caches are missing are skipped with a printed note. Needs cache
+    FILES only — no model, no GPU."""
+    la_config = experiment_config["layer_analysis"]
+    cache_dir = REPO_ROOT / la_config["cache_dir"]
+    metrics = tuple(la_config["divergence_metrics"])
+    n_teacher_layers = len(load_activation_cache(cache_dir / "teacher_tool_use"))
+
+    all_rows: list[dict[str, Any]] = []
+    for condition in conditions:
+        try:
+            n_student_layers = len(load_activation_cache(cache_dir / f"student_{condition}_tool_use"))
+        except FileNotFoundError:
+            print(f"skipping {condition}: no cached student activations")
+            continue
+        alignment = align_layers(n_student_layers, n_teacher_layers)
+        for input_set in ("tool_use", "general"):
+            rows = compare_cached_activations(
+                cache_dir / f"student_{condition}_{input_set}", cache_dir / f"teacher_{input_set}",
+                alignment, metrics=metrics, input_set=input_set,
+            )
+            all_rows.extend({**row, "condition": condition} for row in rows)
+        print(f"compared {condition}: teacher {n_teacher_layers} layers, student {n_student_layers} layers")
+
+    write_layer_analysis_results(all_rows, REPO_ROOT / la_config["results_path"])
+    print(f"{len(all_rows)} rows written to {la_config['results_path']}")
+    return all_rows
 
 
 def main() -> None:
@@ -572,7 +605,9 @@ def main() -> None:
     from adbench.training.train import CONDITIONS, load_experiment_config
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--role", choices=["teacher", "student"], required=True)
+    parser.add_argument("--role", choices=["teacher", "student", "compare"], required=True,
+                        help="teacher/student: extract + cache activations (own process each). "
+                             "compare: compare every cached student condition to the teacher.")
     parser.add_argument("--condition", choices=CONDITIONS, default="distilled",
                         help="Which trained student checkpoint to extract (role=student only).")
     parser.add_argument("--experiment-config", default="configs/experiment.yaml")
@@ -581,7 +616,10 @@ def main() -> None:
 
     experiment_config = load_experiment_config(args.experiment_config)
     models_config = load_experiment_config(args.models_config)
-    _extract_role(args.role, args.condition, experiment_config, models_config)
+    if args.role == "compare":
+        compare_all_conditions(experiment_config, CONDITIONS)
+    else:
+        _extract_role(args.role, args.condition, experiment_config, models_config)
 
 
 if __name__ == "__main__":

@@ -592,3 +592,26 @@ def test_load_general_probe_texts_returns_first_n(tmp_path):
     texts = load_general_probe_texts(experiment_config, n_samples=10)
 
     assert texts == [f"chunk {i}" for i in range(10)]
+
+
+def test_compare_all_conditions_tags_rows_and_skips_missing_caches(tmp_path, monkeypatch):
+    from adbench.analysis import layer_analysis
+    from adbench.analysis.layer_analysis import compare_all_conditions, read_layer_analysis_results
+
+    monkeypatch.setattr(layer_analysis, "REPO_ROOT", tmp_path)
+    experiment_config = {"layer_analysis": {
+        "cache_dir": "cache/", "results_path": "out/divergence.jsonl",
+        "divergence_metrics": ["cka", "cosine_distance"],
+    }}
+    cache = tmp_path / "cache"
+    for input_set in ("tool_use", "general"):
+        save_activation_cache(_acts(4, 10, 12), cache / f"teacher_{input_set}")
+        for condition in ("base", "distilled"):  # sft_only deliberately absent
+            save_activation_cache(_acts(3, 10, 8), cache / f"student_{condition}_{input_set}")
+
+    rows = compare_all_conditions(experiment_config, ("base", "sft_only", "distilled"))
+
+    assert {r["condition"] for r in rows} == {"base", "distilled"}
+    assert {r["input_set"] for r in rows} == {"tool_use", "general"}
+    assert len(rows) == 2 * 2 * 3 * 2  # conditions x input sets x student layers x streams
+    assert read_layer_analysis_results(tmp_path / "out" / "divergence.jsonl") == rows
