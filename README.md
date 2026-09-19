@@ -155,7 +155,14 @@ pip install -r requirements.txt
 pytest
 ```
 
-**Colab (GPU)** — data prep, training, evaluation, layer analysis, in order:
+**One notebook, resumable (recommended)** — `notebooks/07_final.ipynb` runs data
+prep, all three trainings, evaluation and layer analysis in one go on Kaggle
+(GPU T4 x2, Internet on). Each finished stage is saved to a private Hugging
+Face repo (Kaggle secret `HF_TOKEN`), so a stopped run continues instead of
+restarting; see the notebook's first cell. `notebooks/08_results.ipynb` turns
+the files in `results/` into the tables and figures below, with no GPU.
+
+**Colab (GPU), stage by stage** — data prep, training, evaluation, layer analysis, in order:
 1. `notebooks/00_setup_colab.ipynb` — clone repo, install GPU deps
 2. `notebooks/01_data_prep.ipynb` — build the filtered subset + split
 3. `notebooks/02_training.ipynb` — all three conditions (base/sft_only/distilled)
@@ -284,9 +291,28 @@ of it. Only the actual extraction from a real checkpoint needs Colab.
 ## Status
 
 All six deliverables — harness, dataset prep, training, evaluation, and
-layer analysis — are implemented and tested. The full pipeline is ready to
-run end to end on Colab: `01_data_prep` → `02_training` → `03_evaluate` →
-`04_layer_analysis`.
+layer analysis — are implemented, tested, and have been run end to end once.
+
+### First full run (seed 42, single run)
+
+Full-chain success on the 121 synthetic tasks (fixed six-tool vocabulary the
+students were not trained on):
+
+| condition | chain 1 | chain 3 | chain 5 | perplexity |
+|---|---|---|---|---|
+| base | 93.5% | 70.0% | 74.3% | 18.31 |
+| SFT only | 95.7% | 70.0% | 68.6% | 17.35 |
+| distilled (KD + SFT) | 100% | 87.5% | 91.4% | 18.46 |
+
+The distilled student is ahead of both other conditions on the multi-step
+chains (pooled over chains 3+5: +17 points over base, +20 over SFT-only, with
+template-level bootstrap intervals that exclude zero); SFT-only is
+indistinguishable from the untouched base. Layer-wise CKA/RSA similarity to the
+teacher does **not** separate the conditions on the 50+50 probe texts used
+(mean CKA 0.845 for all three), so this run does not support "the student's
+layers move toward the teacher's" as the mechanism. Limitations: one seed, 121
+tasks from a small set of templates, 640 training examples, mean-pooled probes.
+Everything is in `notebooks/08_results.ipynb`; figures in `results/figures/`.
 
 Resolved design questions:
 - **Tokenizer compatibility (teacher/student)** — verified shared
@@ -326,7 +352,7 @@ Resolved design questions:
   since hidden sizes differ — see "Layer analysis" above), on both a
   tool-use and a general probe set, without ever holding both models in
   GPU memory at once.
-- 323 tests passing (`pytest`), ruff-clean, no GPU needed (2 tests touch
+- 336 tests passing (`pytest`), ruff-clean, no GPU needed (2 tests touch
   network once, to check against the real Qwen tokenizer, and skip cleanly
   if it's unreachable).
 

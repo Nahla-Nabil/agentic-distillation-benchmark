@@ -1,0 +1,154 @@
+{
+  "summary": [
+    {
+      "condition": "base",
+      "chain_length": 1,
+      "n_tasks": 46,
+      "full_chain_success_rate": 0.9347826086956522,
+      "per_step_success_rate": 0.9347826086956522,
+      "clean_step_success_rate": 0.7391304347826086,
+      "recovery_rate": 0.75,
+      "error_breakdown": {
+        "MalformedCallError": 3
+      },
+      "error_category_breakdown": {
+        "protocol": 3
+      },
+      "perplexity": 18.30711649291427
+    },
+    {
+      "condition": "base",
+      "chain_length": 3,
+      "n_tasks": 40,
+      "full_chain_success_rate": 0.7,
+      "per_step_success_rate": 0.8991596638655462,
+      "clean_step_success_rate": 0.680672268907563,
+      "recovery_rate": 0.7,
+      "error_breakdown": {
+        "MalformedCallError": 9,
+        "WrongToolError": 3
+      },
+      "error_category_breakdown": {
+        "protocol": 12
+      },
+      "perplexity": 18.30711649291427
+    },
+    {
+      "condition": "base",
+      "chain_length": 5,
+      "n_tasks": 35,
+      "full_chain_success_rate": 0.7428571428571429,
+      "per_step_success_rate": 0.9447852760736196,
+      "clean_step_success_rate": 0.8895705521472392,
+      "recovery_rate": 0.75,
+      "error_breakdown": {
+        "MalformedCallError": 4,
+        "WrongToolError": 5
+      },
+      "error_category_breakdown": {
+        "protocol": 9
+      },
+      "perplexity": 18.30711649291427
+    },
+    {
+      "condition": "distilled",
+      "chain_length": 1,
+      "n_tasks": 46,
+      "full_chain_success_rate": 1.0,
+      "per_step_success_rate": 1.0,
+      "clean_step_success_rate": 0.7391304347826086,
+      "recovery_rate": 1.0,
+      "error_breakdown": {},
+      "error_category_breakdown": {},
+      "perplexity": 18.461748586390634
+    },
+    {
+      "condition": "distilled",
+      "chain_length": 3,
+      "n_tasks": 40,
+      "full_chain_success_rate": 0.875,
+      "per_step_success_rate": 0.9576271186440678,
+      "clean_step_success_rate": 0.7033898305084746,
+      "recovery_rate": 0.8,
+      "error_breakdown": {
+        "WrongToolError": 4,
+        "MalformedCallError": 1
+      },
+      "error_category_breakdown": {
+        "protocol": 5
+      },
+      "perplexity": 18.461748586390634
+    },
+    {
+      "condition": "distilled",
+      "chain_length": 5,
+      "n_tasks": 35,
+      "full_chain_success_rate": 0.9142857142857143,
+      "per_step_success_rate": 0.9821428571428571,
+      "clean_step_success_rate": 0.8630952380952381,
+      "recovery_rate": 0.8888888888888888,
+      "error_breakdown": {
+        "WrongToolError": 3
+      },
+      "error_category_breakdown": {
+        "protocol": 3
+      },
+      "perplexity": 18.461748586390634
+    },
+    {
+      "condition": "sft_only",
+      "chain_length": 1,
+      "n_tasks": 46,
+      "full_chain_success_rate": 0.9565217391304348,
+      "per_step_success_rate": 0.9565217391304348,
+      "clean_step_success_rate": 0.7391304347826086,
+      "recovery_rate": 0.8333333333333334,
+      "error_breakdown": {
+        "MalformedCallError": 2
+      },
+      "error_category_breakdown": {
+        "protocol": 2
+      },
+      "perplexity": 17.35072381728789
+    },
+    {
+      "condition": "sft_only",
+      "chain_length": 3,
+      "n_tasks": 40,
+      "full_chain_success_rate": 0.7,
+      "per_step_success_rate": 0.896551724137931,
+      "clean_step_success_rate": 0.7931034482758621,
+      "recovery_rate": 0.4,
+      "error_breakdown": {
+        "WrongToolError": 9,
+        "MalformedCallError": 3
+      },
+      "error_category_breakdown": {
+        "protocol": 12
+      },
+      "perplexity": 17.35072381728789
+    },
+    {
+      "condition": "sft_only",
+      "chain_length": 5,
+      "n_tasks": 35,
+      "full_chain_success_rate": 0.6857142857142857,
+      "per_step_success_rate": 0.9299363057324841,
+      "clean_step_success_rate": 0.8980891719745223,
+      "recovery_rate": 0.625,
+      "error_breakdown": {
+        "WrongToolError": 9,
+        "MalformedCallError": 2
+      },
+      "error_category_breakdown": {
+        "protocol": 11
+      },
+      "perplexity": 17.35072381728789
+    }
+  ],
+  "perplexity_by_condition": {
+    "base": 18.30711649291427,
+    "sft_only": 17.35072381728789,
+    "distilled": 18.461748586390634
+  }
+}
