@@ -314,6 +314,19 @@ layers move toward the teacher's" as the mechanism. Limitations: one seed, 121
 tasks from a small set of templates, 640 training examples, mean-pooled probes.
 Everything is in `notebooks/08_results.ipynb`; figures in `results/figures/`.
 
+### v2: teacher knowledge or regularisation? (in progress)
+
+The v1 result cannot say *why* distillation helped: the SFT-only student
+memorised its 640 templated examples (training loss ~1e-4) while the KD term
+kept the distilled student away from that collapse. v2 adds controls with
+identical data and hyperparameters: `sft_early` (one epoch), `sft_ls` (label
+smoothing), `self_distill` (KD from the frozen base student, i.e. no external
+knowledge) and optionally `distilled_8b` (Qwen3-8B teacher), three seeds each,
+greedy decoding, and an extra evaluation on held-out tasks over the *training*
+tools next to the unseen-tool set. Run one seed per session with
+`notebooks/09_v2_controls.ipynb` (`SEED = 0, 1, 2`; ~5 h on Kaggle T4 x2,
+resumable). Conditions are defined in `configs/experiment.yaml`.
+
 Resolved design questions:
 - **Tokenizer compatibility (teacher/student)** — verified shared
   (`scripts/verify_tokenizer_compatibility.py`); logit-level KD is safe.
