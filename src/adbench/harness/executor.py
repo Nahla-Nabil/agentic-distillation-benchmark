@@ -73,6 +73,10 @@ class StepOutcome:
     recovered_from_error: bool = False
     error: str | None = None
     error_type: str | None = None
+    # Did the FIRST attempt call the expected tool with exactly the expected
+    # arguments? None when the task carries no ground-truth arguments. Logged
+    # only: it does not affect success, retries or the messages the model sees.
+    arguments_match: bool | None = None
 
 
 @dataclass
@@ -82,6 +86,22 @@ class TaskState:
     messages: list[dict[str, Any]] = field(default_factory=list)
     steps: list[StepOutcome] = field(default_factory=list)
     final_success: bool = False
+
+
+def _values_match(actual: Any, expected: Any) -> bool:
+    if isinstance(actual, bool) or isinstance(expected, bool):
+        return actual is expected
+    if isinstance(actual, (int, float)) and isinstance(expected, (int, float)):
+        return abs(actual - expected) <= 1e-6 * max(1.0, abs(expected))
+    if isinstance(actual, str) and isinstance(expected, str):
+        return actual.strip().lower() == expected.strip().lower()
+    return actual == expected
+
+
+def arguments_match(actual: dict[str, Any], expected: dict[str, Any]) -> bool:
+    """Same argument names, and equal values (numbers within a tiny tolerance,
+    strings ignoring case and surrounding whitespace, JSON types otherwise strict)."""
+    return set(actual) == set(expected) and all(_values_match(actual[k], expected[k]) for k in expected)
 
 
 def parse_model_output(text: str) -> ToolCall | FinalAnswer:
@@ -152,6 +172,12 @@ def _run_step(
 ) -> StepOutcome:
     expected_sequence = getattr(task, "expected_tool_sequence", None) or []
     expected_name = expected_sequence[step_index] if step_index < len(expected_sequence) else None
+    expected_arguments = getattr(task, "expected_arguments", None)
+    expected_args = (
+        expected_arguments[step_index]
+        if expected_arguments and step_index < len(expected_arguments) else None
+    )
+    first_attempt_args_match: bool | None = None if expected_args is None else False
 
     last_error: str | None = None
     last_error_type: str | None = None
@@ -170,6 +196,8 @@ def _run_step(
                 )
 
             tool_name_attempted = parsed.name
+            if attempt == 0 and expected_args is not None and parsed.name == expected_name:
+                first_attempt_args_match = arguments_match(parsed.arguments, expected_args)
 
             if expected_name is not None and parsed.name != expected_name:
                 raise WrongToolError(
@@ -199,6 +227,7 @@ def _run_step(
             recovered_from_error=(attempt > 0),
             error=None,
             error_type=None,
+            arguments_match=first_attempt_args_match,
         )
 
     return StepOutcome(
@@ -208,6 +237,7 @@ def _run_step(
         recovered_from_error=False,
         error=last_error,
         error_type=last_error_type,
+        arguments_match=first_attempt_args_match,
     )
 
 

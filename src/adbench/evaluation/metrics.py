@@ -105,6 +105,7 @@ def task_state_to_row(condition: str, task: Any, state: Any, task_set: str = DEF
             "recovered_from_error": s.recovered_from_error,
             "error": s.error,
             "error_type": s.error_type,
+            "arguments_match": getattr(s, "arguments_match", None),
         }
         for s in state.steps
     ]
@@ -233,6 +234,16 @@ def success_rate_by_chain_length(rows: list[dict[str, Any]]) -> dict[int, float]
     return {length: full_chain_success_rate(group) for length, group in sorted(by_length.items())}
 
 
+def argument_accuracy(rows: list[dict[str, Any]]) -> float | None:
+    """Share of steps whose first attempt used exactly the expected tool
+    arguments, over the steps that carry ground truth (real Glaive tasks).
+    None when no step has ground truth, e.g. for the synthetic tasks."""
+    values = [
+        s["arguments_match"] for row in rows for s in row["steps"] if s.get("arguments_match") is not None
+    ]
+    return sum(values) / len(values) if values else None
+
+
 def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Every metric above, bundled for one slice of rows (typically already
     filtered to one (condition, chain_length) pair by the caller)."""
@@ -242,6 +253,7 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "per_step_success_rate": per_step_success_rate(rows),
         "clean_step_success_rate": clean_step_success_rate(rows),
         "recovery_rate": recovery_rate(rows),
+        "argument_accuracy": argument_accuracy(rows),
         "error_breakdown": error_breakdown(rows),
         "error_category_breakdown": error_category_breakdown(rows),
     }

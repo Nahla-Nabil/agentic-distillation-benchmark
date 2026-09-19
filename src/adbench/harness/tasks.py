@@ -88,6 +88,10 @@ class TaskSpec:
     user_goal: str
     expected_tool_sequence: list[str] = field(default_factory=list)
     injected_error_at_step: int | None = None
+    # Ground-truth arguments per step, when known (real Glaive tasks only). Used
+    # for logging argument accuracy; never shown to the model and never changes
+    # whether a step counts as successful.
+    expected_arguments: list[dict[str, Any]] | None = None
 
 
 # --------------------------------------------------------------------------
@@ -535,6 +539,7 @@ def load_tasks(
                 user_goal=r["user_goal"],
                 expected_tool_sequence=r["expected_tool_sequence"],
                 injected_error_at_step=r["injected_error_at_step"],
+                expected_arguments=[r["arguments"]] if r.get("arguments") is not None else None,
             )
             for r in read_jsonl(path)
         ]

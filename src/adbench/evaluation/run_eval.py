@@ -230,6 +230,20 @@ def evaluate_condition(
     return rows, perplexity
 
 
+def evaluate_seen_only(
+    condition: str, experiment_config: dict[str, Any], models_config: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Just the held-out seen-tool tasks for one condition (no synthetic tasks,
+    no perplexity) — a cheap top-up (~10 minutes per condition) for runs whose
+    main evaluation predates argument logging."""
+    model, tokenizer = load_condition_model(condition, experiment_config, models_config)
+    model_fn = make_harness_model_fn(model, tokenizer)
+    return run_seen_tool_eval_for_condition(
+        condition, model_fn, experiment_config["harness"].get("seen_tool_eval_n", 0),
+        experiment_config["harness"]["max_retries_per_step"],
+    )
+
+
 def write_eval_outputs(
     all_rows: list[dict[str, Any]],
     perplexities: dict[str, float],
@@ -263,6 +277,10 @@ def main() -> None:
         "--conditions", default=None,
         help="Comma-separated list of conditions to evaluate in one pass (overrides the default three).",
     )
+    parser.add_argument(
+        "--seen-only", action="store_true",
+        help="Evaluate only the held-out seen-tool tasks (with argument accuracy); write to --output-dir.",
+    )
     parser.add_argument("--experiment-config", default="configs/experiment.yaml")
     parser.add_argument("--models-config", default="configs/models.yaml")
     parser.add_argument("--output-dir", default="results")
@@ -278,6 +296,17 @@ def main() -> None:
             parser.error(f"unknown condition(s) {unknown}; choose from {list(ALL_CONDITIONS)}")
     else:
         conditions = [args.condition] if args.condition else list(CONDITIONS)
+
+    if args.seen_only:
+        seen_rows: list[dict[str, Any]] = []
+        for condition in conditions:
+            print(f"=== Seen-tool evaluation: {condition} ===")
+            rows = evaluate_seen_only(condition, experiment_config, models_config)
+            seen_rows.extend(rows)
+            print(f"{condition}: {len(rows)} seen-tool tasks")
+        output = write_eval_outputs(seen_rows, {}, REPO_ROOT / args.output_dir)
+        print(json.dumps(output["summary"], indent=2))
+        return
 
     all_rows: list[dict[str, Any]] = []
     perplexities: dict[str, float] = {}

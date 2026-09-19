@@ -64,7 +64,8 @@ def test_task_state_to_row_success_shape():
         "num_steps_attempted": 1, "injected_error_at_step": None,
         "failure_step_index": None, "failure_error_type": None,
         "steps": [{"step_index": 0, "tool_name": "get_weather", "succeeded": True,
-                   "recovered_from_error": False, "error": None, "error_type": None}],
+                   "recovered_from_error": False, "error": None, "error_type": None,
+                   "arguments_match": None}],
     }
 
 
@@ -242,7 +243,7 @@ def test_summarize_bundles_every_metric():
     summary = summarize(rows)
     assert set(summary) == {
         "n_tasks", "full_chain_success_rate", "per_step_success_rate",
-        "clean_step_success_rate", "recovery_rate", "error_breakdown",
+        "clean_step_success_rate", "recovery_rate", "argument_accuracy", "error_breakdown",
         "error_category_breakdown",
     }
     assert summary["n_tasks"] == 1
@@ -326,3 +327,21 @@ def test_summarize_keeps_seen_and_unseen_tasks_of_the_same_chain_length_apart():
     assert by_set["unseen_tools"]["n_tasks"] == 2          # the explicit one plus the legacy row
     assert by_set["seen_tools"]["n_tasks"] == 1
     assert by_set["seen_tools"]["full_chain_success_rate"] == 0.0
+
+
+# --- argument accuracy (logged on tasks that carry ground-truth arguments) ---
+
+def test_argument_accuracy_counts_only_steps_with_ground_truth():
+    rows = [
+        _row(steps=[{**_step(0), "arguments_match": True}]),
+        _row(steps=[{**_step(0), "arguments_match": False}]),
+        _row(steps=[{**_step(0), "arguments_match": None}]),   # synthetic-style step: not counted
+        _row(steps=[_step(0)]),                                  # legacy step without the field
+    ]
+    from adbench.evaluation.metrics import argument_accuracy
+    assert argument_accuracy(rows) == 0.5
+
+
+def test_argument_accuracy_is_none_without_ground_truth():
+    from adbench.evaluation.metrics import argument_accuracy
+    assert argument_accuracy([_row(steps=[_step(0)])]) is None

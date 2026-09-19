@@ -197,3 +197,13 @@ def test_load_tasks_glaive_missing_file_raises_file_not_found(tmp_path):
     )
     with pytest.raises(FileNotFoundError):
         load_tasks(1, source="glaive_train", config_path=config_path)
+
+
+def test_load_tasks_glaive_carries_the_expected_arguments(tmp_path):
+    train_path, test_path = tmp_path / "train.jsonl", tmp_path / "test.jsonl"
+    _write_fixture_jsonl(train_path, [])
+    _write_fixture_jsonl(test_path, [_FIXTURE_RECORD])
+    config_path = _write_fixture_config(tmp_path, train_path, test_path)
+
+    task = load_tasks(1, source="glaive_test", config_path=config_path)[0]
+    assert task.expected_arguments == [_FIXTURE_RECORD["arguments"]]

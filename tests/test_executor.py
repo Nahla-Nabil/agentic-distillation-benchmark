@@ -265,3 +265,46 @@ def test_run_task_exhausts_retries_on_persistent_injected_error():
     assert state.final_success is False
     assert state.steps[0].succeeded is False
     assert state.steps[0].error_type == "ToolExecutionError"
+
+
+# --- argument logging (does not change grading) ---
+
+def _bmi_task(expected_arguments):
+    from adbench.harness.tasks import TaskSpec
+    return TaskSpec(task_id="g-0", chain_length=1, user_goal="bmi", expected_tool_sequence=["calculate_bmi"],
+                    expected_arguments=expected_arguments)
+
+
+def _bmi_model(args):
+    import json as _json
+    return lambda messages: f'<tool_call>{_json.dumps({"name": "calculate_bmi", "arguments": args})}</tool_call>'
+
+
+def test_arguments_match_tolerates_case_whitespace_and_float_noise_but_not_type_or_key_changes():
+    from adbench.harness.executor import arguments_match
+    assert arguments_match({"x": 70, "s": " Paris "}, {"x": 70.0, "s": "paris"})
+    assert not arguments_match({"x": 70}, {"x": 71})
+    assert not arguments_match({"x": "70"}, {"x": 70})          # JSON type matters
+    assert not arguments_match({"x": 70, "y": 1}, {"x": 70})    # extra key
+    assert not arguments_match({"x": True}, {"x": 1})
+
+
+def test_first_attempt_arguments_are_logged_and_do_not_change_success():
+    from adbench.harness.executor import run_task
+    from adbench.harness.tools import build_glaive_registry
+
+    registry = build_glaive_registry()
+    good = run_task(_bmi_model({"height": 1.75, "weight": 70}), _bmi_task([{"height": 1.75, "weight": 70}]), registry)
+    wrong_values = run_task(_bmi_model({"height": 1.80, "weight": 70}), _bmi_task([{"height": 1.75, "weight": 70}]), registry)
+
+    assert good.steps[0].arguments_match is True and good.final_success
+    assert wrong_values.steps[0].arguments_match is False
+    assert wrong_values.final_success          # right tool, valid call: still a success
+
+
+def test_arguments_match_is_none_when_the_task_has_no_ground_truth():
+    from adbench.harness.executor import run_task
+    from adbench.harness.tools import build_glaive_registry
+
+    state = run_task(_bmi_model({"height": 1.75, "weight": 70}), _bmi_task(None), build_glaive_registry())
+    assert state.steps[0].arguments_match is None

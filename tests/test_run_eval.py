@@ -320,3 +320,22 @@ def test_run_seen_tool_eval_is_skipped_when_n_is_zero(monkeypatch):
 def test_real_experiment_config_defines_a_seen_tool_eval_size():
     config = load_experiment_config(REPO_ROOT / "configs" / "experiment.yaml")
     assert isinstance(config["harness"]["seen_tool_eval_n"], int)
+
+
+def test_evaluate_seen_only_loads_one_model_and_runs_only_seen_tasks(monkeypatch):
+    from adbench.evaluation import run_eval
+
+    monkeypatch.setattr(run_eval, "load_condition_model", lambda c, e, m: (_FakeGenerateModel([1]), _StubTokenizer()))
+    seen_calls = {}
+
+    def fake_seen(condition, model_fn, n_tasks, max_retries):
+        seen_calls.update(condition=condition, n=n_tasks, retries=max_retries)
+        return [{"condition": condition, "task_set": "seen_tools"}]
+
+    monkeypatch.setattr(run_eval, "run_seen_tool_eval_for_condition", fake_seen)
+    config = {"harness": {"seen_tool_eval_n": 7, "max_retries_per_step": 2}}
+
+    rows = run_eval.evaluate_seen_only("sft_early", config, {})
+
+    assert rows == [{"condition": "sft_early", "task_set": "seen_tools"}]
+    assert seen_calls == {"condition": "sft_early", "n": 7, "retries": 2}
