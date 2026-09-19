@@ -271,3 +271,35 @@ def test_combined_loss_various_weightings_stay_finite(kd_weight, sft_weight):
 
     assert torch.isfinite(loss)
     assert not any(math.isnan(v) for v in components.values())
+
+
+# --- label smoothing (the regularised-SFT control) ---
+
+def test_label_smoothing_defaults_to_zero_and_validates_range():
+    assert KDLossConfig().label_smoothing == 0.0
+    with pytest.raises(ValueError):
+        KDLossConfig(label_smoothing=-0.1)
+    with pytest.raises(ValueError):
+        KDLossConfig(label_smoothing=1.0)
+
+
+def test_label_smoothing_raises_the_loss_of_a_confident_correct_prediction():
+    labels = torch.tensor([[1, 2, 3]])
+    logits = torch.full((1, 3, 6), -10.0)
+    for i, tok in enumerate(labels[0]):
+        logits[0, i, tok] = 10.0  # near-certain, correct
+
+    plain, _ = combined_loss(logits, None, labels, KDLossConfig(kd_weight=0.0, sft_weight=1.0))
+    smoothed, _ = combined_loss(logits, None, labels, KDLossConfig(kd_weight=0.0, sft_weight=1.0, label_smoothing=0.1))
+
+    assert plain.item() < 1e-6            # the memorised case: loss collapses to ~0
+    assert smoothed.item() > 0.5          # smoothing keeps a floor under it
+
+
+def test_label_smoothing_zero_matches_the_previous_behaviour():
+    torch.manual_seed(0)
+    logits = torch.randn(2, 4, 7)
+    labels = torch.randint(0, 7, (2, 4))
+    a, _ = combined_loss(logits, None, labels, KDLossConfig(kd_weight=0.0, sft_weight=1.0))
+    b, _ = combined_loss(logits, None, labels, KDLossConfig(kd_weight=0.0, sft_weight=1.0, label_smoothing=0.0))
+    assert torch.equal(a, b)

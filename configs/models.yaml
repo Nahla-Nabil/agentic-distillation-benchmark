@@ -23,6 +23,22 @@ teacher:
   load_in_4bit: true
   max_seq_length: 2048
 
+# Alternative teachers for the control conditions (configs/experiment.yaml). Same
+# shared tokenizer/vocabulary, so logit-level KD works unchanged.
+teacher_8b:
+  hf_id: Qwen/Qwen3-8B
+  role: teacher
+  load_in_4bit: true
+  max_seq_length: 2048
+
+# "Self" teacher: the base student itself, frozen. Its logits at step 0 equal the
+# student's, so this KD term only anchors the student to where it started.
+teacher_self:
+  hf_id: Qwen/Qwen3-4B-Instruct-2507
+  role: teacher
+  load_in_4bit: true
+  max_seq_length: 2048
+
 student:
   hf_id: Qwen/Qwen3-4B-Instruct-2507
   role: student

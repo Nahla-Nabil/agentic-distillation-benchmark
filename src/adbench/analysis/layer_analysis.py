@@ -602,13 +602,13 @@ def main() -> None:
     sys.path.insert(0, str(REPO_ROOT / "src"))
     os.chdir(REPO_ROOT)
 
-    from adbench.training.train import CONDITIONS, load_experiment_config
+    from adbench.training.train import ALL_CONDITIONS, load_experiment_config
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--role", choices=["teacher", "student", "compare"], required=True,
                         help="teacher/student: extract + cache activations (own process each). "
                              "compare: compare every cached student condition to the teacher.")
-    parser.add_argument("--condition", choices=CONDITIONS, default="distilled",
+    parser.add_argument("--condition", choices=ALL_CONDITIONS, default="distilled",
                         help="Which trained student checkpoint to extract (role=student only).")
     parser.add_argument("--experiment-config", default="configs/experiment.yaml")
     parser.add_argument("--models-config", default="configs/models.yaml")
@@ -617,7 +617,7 @@ def main() -> None:
     experiment_config = load_experiment_config(args.experiment_config)
     models_config = load_experiment_config(args.models_config)
     if args.role == "compare":
-        compare_all_conditions(experiment_config, CONDITIONS)
+        compare_all_conditions(experiment_config, ALL_CONDITIONS)
     else:
         _extract_role(args.role, args.condition, experiment_config, models_config)
 

@@ -32,6 +32,7 @@ reviewed-by-running, until it's run once on Colab.
 import argparse
 import copy
 import json
+import os
 import random
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,7 +43,18 @@ import yaml
 from adbench.training.losses import KDLossConfig, combined_loss
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-CONDITIONS = ("base", "sft_only", "distilled")
+CONDITIONS = ("base", "sft_only", "distilled")  # the original three-way comparison
+# Controls that separate "the teacher's knowledge" from "regularisation":
+#   sft_early    SFT stopped after one epoch (declared a priori, not tuned on test data)
+#   sft_ls       SFT with label smoothing
+#   self_distill same KD loss, but the teacher is the frozen base student itself
+#   distilled_8b same KD loss with a mid-size external teacher (Qwen3-8B)
+# Each is defined by its entry in configs/experiment.yaml's `conditions`.
+CONTROL_CONDITIONS = ("sft_early", "sft_ls", "self_distill", "distilled_8b")
+ALL_CONDITIONS = CONDITIONS + CONTROL_CONDITIONS
+
+# Legacy loss kind for the three original conditions when their config entry has no `loss:` key.
+_DEFAULT_LOSS_KIND = {"base": "none", "sft_only": "sft", "distilled": "kd"}
 
 
 # --------------------------------------------------------------------------
@@ -68,6 +80,7 @@ class TrainingConfig:
     logging_steps: int
     save_steps: int
     kd: KDLossConfig
+    teacher_key: str = "teacher"  # which models.yaml entry supplies the teacher (kd conditions only)
 
 
 def load_experiment_config(config_path: str | Path) -> dict[str, Any]:
@@ -130,8 +143,13 @@ def resolve_training_config(
     sweep mechanism is exploring the distilled condition's hyperparameters,
     not just its KD weighting.
     """
-    if condition not in CONDITIONS:
-        raise ValueError(f"Unknown condition {condition!r}; expected one of {CONDITIONS}.")
+    if condition not in ALL_CONDITIONS:
+        raise ValueError(f"Unknown condition {condition!r}; expected one of {ALL_CONDITIONS}.")
+
+    spec = next((c for c in experiment_config["conditions"] if c["id"] == condition), {})
+    loss_kind = spec.get("loss") or _DEFAULT_LOSS_KIND.get(condition)
+    if loss_kind not in ("none", "sft", "kd"):
+        raise ValueError(f"Condition {condition!r} needs `loss: sft|kd|none` in configs/experiment.yaml.")
 
     training_block = copy.deepcopy(experiment_config["training"])
     sweep_list = training_block.pop("sweep", [])
@@ -144,22 +162,30 @@ def resolve_training_config(
         for dotted_key, value in matches[0].get("overrides", {}).items():
             _set_by_dotted_path(training_block, dotted_key, value)
 
+    # Per-condition overrides (e.g. sft_early: num_train_epochs: 1), applied on top of the shared block.
+    for dotted_key, value in (spec.get("overrides") or {}).items():
+        _set_by_dotted_path(training_block, dotted_key, value)
+
     kd_block = training_block.pop("kd")
-    if condition == "sft_only":
-        kd = KDLossConfig(kd_weight=0.0, sft_weight=1.0)
-    elif condition == "distilled":
+    if loss_kind == "kd":
         kd = KDLossConfig(
             temperature=kd_block["temperature"],
             kd_weight=kd_block["kd_weight"],
             sft_weight=kd_block["sft_weight"],
         )
-    else:  # base
-        kd = KDLossConfig(kd_weight=0.0, sft_weight=1.0)
+    else:  # sft-style losses never touch a teacher, by construction rather than by trusting the config
+        kd = KDLossConfig(
+            kd_weight=0.0, sft_weight=1.0,
+            label_smoothing=float(spec.get("label_smoothing", 0.0)) if loss_kind == "sft" else 0.0,
+        )
+
+    # ADBENCH_SEED lets one notebook run each seed as its own session/run tag without editing the config.
+    seed = int(os.environ["ADBENCH_SEED"]) if "ADBENCH_SEED" in os.environ else training_block["seed"]
 
     return TrainingConfig(
         condition=condition,
         checkpoint_dir=resolve_checkpoint_dir(experiment_config, condition),
-        seed=training_block["seed"],
+        seed=seed,
         learning_rate=training_block["learning_rate"],
         num_train_epochs=training_block["num_train_epochs"],
         per_device_train_batch_size=training_block["per_device_train_batch_size"],
@@ -170,6 +196,7 @@ def resolve_training_config(
         logging_steps=training_block["logging_steps"],
         save_steps=training_block["save_steps"],
         kd=kd,
+        teacher_key=spec.get("teacher", "teacher") if loss_kind == "kd" else "teacher",
     )
 
 
@@ -368,7 +395,7 @@ def write_loss_log(entries: list[dict[str, Any]], path: str | Path) -> None:
 # testable end-to-end; built from the tested pieces above.
 # --------------------------------------------------------------------------
 
-def load_student(models_config: dict[str, Any]):
+def load_student(models_config: dict[str, Any], seed: int | None = None):
     """Load the student model + tokenizer via Unsloth, wrapped with the LoRA
     config from configs/models.yaml. Returns (model, tokenizer)."""
     from unsloth import FastLanguageModel
@@ -395,17 +422,19 @@ def load_student(models_config: dict[str, Any]):
         lora_alpha=lora_cfg["alpha"],
         lora_dropout=lora_cfg["dropout"],
         target_modules=lora_cfg["target_modules"],
+        # Unsloth's default is 3407 for every run, which would make seeds share one LoRA init.
+        **({"random_state": seed} if seed is not None else {}),
     )
     return model, tokenizer
 
 
-def load_teacher(models_config: dict[str, Any]):
+def load_teacher(models_config: dict[str, Any], teacher_key: str = "teacher"):
     """Load the teacher model (inference-only — no LoRA, no gradients) via
     Unsloth. Only called when a condition's kd_weight > 0."""
     import torch
     from unsloth import FastLanguageModel
 
-    teacher_cfg = models_config["teacher"]
+    teacher_cfg = models_config[teacher_key]
     # On a 2-GPU runtime (e.g. Kaggle's free T4 x2), put the teacher on the
     # *second* GPU so the two 4-bit models — and the student's training
     # activations — never have to share one card's VRAM. On a single-GPU
@@ -575,7 +604,7 @@ def train_condition(
     from adbench.harness.tools import build_glaive_registry
 
     cfg = resolve_training_config(experiment_config, condition, sweep_name)
-    student, tokenizer = load_student(models_config)
+    student, tokenizer = load_student(models_config, seed=cfg.seed)
 
     if condition == "base":
         save_checkpoint(student, tokenizer, cfg.checkpoint_dir)
@@ -583,7 +612,7 @@ def train_condition(
         free_gpu_memory()
         return {"condition": condition, "checkpoint_dir": str(cfg.checkpoint_dir), "steps": 0}
 
-    teacher = load_teacher(models_config) if cfg.kd.kd_weight > 0 else None
+    teacher = load_teacher(models_config, cfg.teacher_key) if cfg.kd.kd_weight > 0 else None
 
     if glaive_train_path is None:
         data_config = load_experiment_config(REPO_ROOT / "configs" / "data.yaml")
@@ -611,7 +640,7 @@ def train_condition(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--condition", required=True, choices=CONDITIONS)
+    parser.add_argument("--condition", required=True, choices=ALL_CONDITIONS)
     parser.add_argument("--experiment-config", default="configs/experiment.yaml")
     parser.add_argument("--models-config", default="configs/models.yaml")
     parser.add_argument("--sweep", default=None, help="Named entry in training.sweep (configs/experiment.yaml).")

@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from adbench.evaluation.metrics import (
+    DEFAULT_TASK_SET,
     summarize_by_condition_and_chain_length,
     task_state_to_row,
     write_results_csv,
@@ -40,8 +41,9 @@ from adbench.evaluation.perplexity import (
 )
 from adbench.harness.executor import ModelFn, run_task
 from adbench.harness.tasks import load_tasks
-from adbench.harness.tools import ToolRegistry, build_demo_registry
+from adbench.harness.tools import ToolRegistry, build_demo_registry, build_glaive_registry
 from adbench.training.train import (
+    ALL_CONDITIONS,
     CONDITIONS,
     REPO_ROOT,
     load_experiment_config,
@@ -68,6 +70,15 @@ def make_harness_model_fn(model, tokenizer, max_new_tokens: int = 256) -> ModelF
     # harmless warnings (one per task step).
     model.generation_config.max_length = None
 
+    # Greedy decoding: the checkpoint's default generation config samples
+    # (temperature 0.7 ...), which would add sampling noise on top of the
+    # run-to-run training variance the seeds are meant to measure. Set once on
+    # the config, not per call, so transformers doesn't warn on every step.
+    model.generation_config.do_sample = False
+    model.generation_config.temperature = None
+    model.generation_config.top_p = None
+    model.generation_config.top_k = None
+
     def model_fn(messages: list[dict[str, Any]]) -> str:
         import torch
 
@@ -93,19 +104,42 @@ def run_harness_eval_for_condition(
     chain_lengths: list[int],
     registry: ToolRegistry | None = None,
     max_retries_per_step: int = 2,
+    task_source: str = "synthetic",
+    task_set: str = DEFAULT_TASK_SET,
+    max_tasks: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Run every synthetic task at every given chain length through
-    model_fn, converting each result to a metrics.py row. Model-agnostic —
-    model_fn can be a real loaded model wrapped by make_harness_model_fn(),
-    or a scripted fake for testing (see tests/test_run_eval.py)."""
+    """Run every task of `task_source` at every given chain length through
+    model_fn, converting each result to a metrics.py row tagged with
+    `task_set`. Model-agnostic — model_fn can be a real loaded model wrapped by
+    make_harness_model_fn(), or a scripted fake for testing (see
+    tests/test_run_eval.py). `max_tasks` keeps only the first N tasks per chain
+    length (for the seen-tool set, which is large)."""
     registry = registry or build_demo_registry()
     rows = []
     for chain_length in chain_lengths:
-        tasks = load_tasks(chain_length, source="synthetic")
+        tasks = load_tasks(chain_length, source=task_source)
+        if max_tasks is not None:
+            tasks = tasks[:max_tasks]
         for task in tasks:
             state = run_task(model_fn, task, registry, max_retries_per_step=max_retries_per_step)
-            rows.append(task_state_to_row(condition, task, state))
+            rows.append(task_state_to_row(condition, task, state, task_set=task_set))
     return rows
+
+
+def run_seen_tool_eval_for_condition(
+    condition: str, model_fn: ModelFn, n_tasks: int, max_retries_per_step: int = 2
+) -> list[dict[str, Any]]:
+    """Held-out single-step Glaive tasks over the tools the students were
+    TRAINED on. Compared with the unseen-tool set this shows whether a
+    condition is strong only on tools it memorised. Note the eval prompt lists
+    all eight Glaive tools, while training prompts listed only the one relevant
+    tool, so this is a harder prompt than the training one, not a replay of it."""
+    if n_tasks <= 0:
+        return []
+    return run_harness_eval_for_condition(
+        condition, model_fn, [1], build_glaive_registry(), max_retries_per_step,
+        task_source="glaive_test", task_set="seen_tools", max_tasks=n_tasks,
+    )
 
 
 def run_perplexity_for_condition(model, tokenizer, experiment_config: dict[str, Any]) -> float:
@@ -189,6 +223,9 @@ def evaluate_condition(
     rows = run_harness_eval_for_condition(
         condition, model_fn, chain_lengths, registry, max_retries_per_step=max_retries
     )
+    rows += run_seen_tool_eval_for_condition(
+        condition, model_fn, experiment_config["harness"].get("seen_tool_eval_n", 0), max_retries
+    )
     perplexity = run_perplexity_for_condition(model, tokenizer, experiment_config)
     return rows, perplexity
 
@@ -219,8 +256,12 @@ def write_eval_outputs(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--condition", choices=CONDITIONS, default=None,
-        help="Evaluate just this condition; omit to evaluate all three in one pass.",
+        "--condition", choices=ALL_CONDITIONS, default=None,
+        help="Evaluate just this condition; omit to evaluate the three core conditions in one pass.",
+    )
+    parser.add_argument(
+        "--conditions", default=None,
+        help="Comma-separated list of conditions to evaluate in one pass (overrides the default three).",
     )
     parser.add_argument("--experiment-config", default="configs/experiment.yaml")
     parser.add_argument("--models-config", default="configs/models.yaml")
@@ -230,7 +271,13 @@ def main() -> None:
     experiment_config = load_experiment_config(args.experiment_config)
     models_config = load_experiment_config(args.models_config)
     chain_lengths = experiment_config["harness"]["chain_lengths"]
-    conditions = [args.condition] if args.condition else list(CONDITIONS)
+    if args.conditions:
+        conditions = [c.strip() for c in args.conditions.split(",") if c.strip()]
+        unknown = [c for c in conditions if c not in ALL_CONDITIONS]
+        if unknown:
+            parser.error(f"unknown condition(s) {unknown}; choose from {list(ALL_CONDITIONS)}")
+    else:
+        conditions = [args.condition] if args.condition else list(CONDITIONS)
 
     all_rows: list[dict[str, Any]] = []
     perplexities: dict[str, float] = {}

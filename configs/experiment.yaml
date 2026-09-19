@@ -26,6 +26,35 @@ conditions:
     label: "Distillation-guided student (KD + SFT, treatment)"
     checkpoint: checkpoints/distilled/
 
+  # ---- Controls: does the KD gain come from the teacher's knowledge, or from
+  # regularisation that stops the student memorising 640 templated examples? ----
+  # Same data, LoRA config, optimizer and seed handling as the conditions above;
+  # only the listed fields differ.
+  - id: sft_early
+    label: "SFT stopped after one epoch (early-stopping control)"
+    checkpoint: checkpoints/sft_early/
+    loss: sft
+    overrides:
+      num_train_epochs: 1    # fixed a priori; the SFT loss is already ~1e-3 after ~40 steps
+
+  - id: sft_ls
+    label: "SFT with label smoothing (regularisation control)"
+    checkpoint: checkpoints/sft_ls/
+    loss: sft
+    label_smoothing: 0.1
+
+  - id: self_distill
+    label: "KD from the frozen base student itself (no external knowledge)"
+    checkpoint: checkpoints/self_distill/
+    loss: kd
+    teacher: teacher_self
+
+  - id: distilled_8b
+    label: "KD from a mid-size external teacher (Qwen3-8B)"
+    checkpoint: checkpoints/distilled_8b/
+    loss: kd
+    teacher: teacher_8b
+
 # Training hyperparameters — named here, not hardcoded in train.py, so
 # they're easy to read, change, and sweep without touching code.
 #
@@ -85,6 +114,10 @@ harness:
   n_tasks_per_chain_length: 30
   inject_errors: true          # exercise the harness's error-handling path
   max_retries_per_step: 2
+  # Also evaluate on this many held-out single-step tasks that use the TRAINING
+  # tools (Glaive test split). Lets us see whether a condition is strong on tools
+  # it was trained on but weak on new ones (memorisation) or not. 0 disables it.
+  seen_tool_eval_n: 100
 
 # General language-modeling comparison baseline (not agentic).
 # Deliberately NOT the Glaive test split — that's entirely tool-calling text,

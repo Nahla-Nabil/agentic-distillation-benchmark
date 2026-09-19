@@ -590,3 +590,65 @@ def test_real_experiment_config_training_block_has_required_keys():
     }
     assert required <= set(config["training"])
     assert {"temperature", "kd_weight", "sft_weight"} <= set(config["training"]["kd"])
+
+
+# --- control conditions (v2) ---
+
+@pytest.mark.parametrize("condition", ["sft_early", "sft_ls", "self_distill", "distilled_8b"])
+def test_every_control_condition_resolves_with_a_checkpoint_dir(condition):
+    config = load_experiment_config(REAL_EXPERIMENT_CONFIG_PATH)
+    cfg = resolve_training_config(config, condition)
+    assert cfg.checkpoint_dir == REPO_ROOT / "checkpoints" / condition
+
+
+def test_sft_early_differs_from_sft_only_only_in_epochs():
+    config = load_experiment_config(REAL_EXPERIMENT_CONFIG_PATH)
+    base, early = resolve_training_config(config, "sft_only"), resolve_training_config(config, "sft_early")
+    assert early.num_train_epochs == 1 and base.num_train_epochs == 3
+    assert early.kd == base.kd
+    for field in ("learning_rate", "per_device_train_batch_size", "gradient_accumulation_steps",
+                  "warmup_ratio", "weight_decay", "lr_scheduler_type", "seed"):
+        assert getattr(early, field) == getattr(base, field), field
+
+
+def test_sft_ls_is_sft_only_plus_label_smoothing_and_never_uses_a_teacher():
+    config = load_experiment_config(REAL_EXPERIMENT_CONFIG_PATH)
+    ls, base = resolve_training_config(config, "sft_ls"), resolve_training_config(config, "sft_only")
+    assert ls.kd.label_smoothing == 0.1 and base.kd.label_smoothing == 0.0
+    assert ls.kd.kd_weight == 0.0 and ls.kd.sft_weight == 1.0
+    assert ls.num_train_epochs == base.num_train_epochs
+
+
+@pytest.mark.parametrize("condition,teacher_key", [
+    ("distilled", "teacher"), ("self_distill", "teacher_self"), ("distilled_8b", "teacher_8b"),
+])
+def test_kd_conditions_share_the_loss_and_differ_only_in_the_teacher(condition, teacher_key):
+    config = load_experiment_config(REAL_EXPERIMENT_CONFIG_PATH)
+    cfg, reference = resolve_training_config(config, condition), resolve_training_config(config, "distilled")
+    assert cfg.teacher_key == teacher_key
+    assert cfg.kd == reference.kd
+    assert cfg.num_train_epochs == reference.num_train_epochs
+
+
+def test_sft_conditions_never_get_a_teacher_key_other_than_the_default():
+    config = load_experiment_config(REAL_EXPERIMENT_CONFIG_PATH)
+    for condition in ("sft_only", "sft_early", "sft_ls"):
+        assert resolve_training_config(config, condition).kd.kd_weight == 0.0
+
+
+def test_every_teacher_key_exists_in_models_yaml():
+    models = load_experiment_config(REPO_ROOT / "configs" / "models.yaml")
+    experiment = load_experiment_config(REAL_EXPERIMENT_CONFIG_PATH)
+    for condition in ("distilled", "self_distill", "distilled_8b"):
+        key = resolve_training_config(experiment, condition).teacher_key
+        assert key in models and models[key]["hf_id"]
+    assert models["teacher_self"]["hf_id"] == models["student"]["hf_id"]
+
+
+def test_adbench_seed_env_overrides_only_the_seed(monkeypatch):
+    config = load_experiment_config(REAL_EXPERIMENT_CONFIG_PATH)
+    default = resolve_training_config(config, "distilled")
+    monkeypatch.setenv("ADBENCH_SEED", "7")
+    seeded = resolve_training_config(config, "distilled")
+    assert seeded.seed == 7 and default.seed == config["training"]["seed"]
+    assert seeded.kd == default.kd and seeded.learning_rate == default.learning_rate

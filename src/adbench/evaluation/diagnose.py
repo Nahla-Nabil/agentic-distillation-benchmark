@@ -19,7 +19,7 @@ from adbench.harness.executor import build_system_prompt, parse_model_output
 from adbench.harness.tasks import load_tasks
 from adbench.harness.tools import build_demo_registry, build_glaive_registry
 from adbench.training.train import (
-    CONDITIONS,
+    ALL_CONDITIONS,
     REPO_ROOT,
     format_training_example,
     load_experiment_config,
@@ -28,7 +28,7 @@ from adbench.training.train import (
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--condition", choices=CONDITIONS, default="sft_only")
+    parser.add_argument("--condition", choices=ALL_CONDITIONS, default="sft_only")
     parser.add_argument(
         "--loader", choices=["unsloth", "unsloth_nofast", "plain"], default="unsloth",
         help="unsloth: what run_eval.py uses (FastLanguageModel + for_inference). "

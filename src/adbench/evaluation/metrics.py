@@ -85,10 +85,18 @@ _TOOL_EXECUTION_ERROR_NAMES = {"ToolExecutionError", "ToolArgumentError", "ToolT
 _PROTOCOL_ERROR_NAMES = {"ProtocolError", "MalformedCallError", "UnknownToolError", "WrongToolError"}
 
 
-def task_state_to_row(condition: str, task: Any, state: Any) -> dict[str, Any]:
+# Rows written before the seen/unseen split have no `task_set` field; they are
+# all from the synthetic (unseen-tool) set.
+DEFAULT_TASK_SET = "unseen_tools"
+
+
+def task_state_to_row(condition: str, task: Any, state: Any, task_set: str = DEFAULT_TASK_SET) -> dict[str, Any]:
     """Convert one executor.run_task() result into the row schema documented
     above. `task` is the TaskSpec that was run (for injected_error_at_step);
-    `state` is the TaskState run_task() returned."""
+    `state` is the TaskState run_task() returned. `task_set` names which
+    evaluation set the task came from ("unseen_tools": the synthetic six-tool
+    vocabulary the students never trained on; "seen_tools": held-out Glaive
+    tasks over the training tools)."""
     steps = [
         {
             "step_index": s.step_index,
@@ -110,6 +118,7 @@ def task_state_to_row(condition: str, task: Any, state: Any) -> dict[str, Any]:
 
     return {
         "condition": condition,
+        "task_set": task_set,
         "chain_length": state.chain_length,
         "task_id": state.task_id,
         "success": state.final_success,
@@ -239,16 +248,17 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def summarize_by_condition_and_chain_length(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Group `rows` by (condition, chain_length) and summarize() each group
-    — this is the table evaluation/run_eval.py writes to
-    results/eval_summary.json, and what the analysis notebook plots."""
-    groups: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
+    """Group `rows` by (condition, task_set, chain_length) and summarize() each
+    group — this is the table evaluation/run_eval.py writes to
+    results/eval_summary.json, and what the analysis notebook plots. Rows
+    without a `task_set` count as the default (unseen-tool) set."""
+    groups: dict[tuple[str, str, int], list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
-        groups[(row["condition"], row["chain_length"])].append(row)
+        groups[(row["condition"], row.get("task_set", DEFAULT_TASK_SET), row["chain_length"])].append(row)
 
     result = []
-    for (condition, chain_length), group in sorted(groups.items()):
-        entry = {"condition": condition, "chain_length": chain_length}
+    for (condition, task_set, chain_length), group in sorted(groups.items()):
+        entry = {"condition": condition, "task_set": task_set, "chain_length": chain_length}
         entry.update(summarize(group))
         result.append(entry)
     return result
@@ -274,7 +284,7 @@ def read_results_jsonl(path: str | Path) -> list[dict[str, Any]]:
 
 
 _CSV_SUMMARY_FIELDS = [
-    "condition", "chain_length", "task_id", "success", "num_steps_attempted",
+    "condition", "task_set", "chain_length", "task_id", "success", "num_steps_attempted",
     "injected_error_at_step", "failure_step_index", "failure_error_type",
 ]
 
@@ -286,7 +296,8 @@ def write_results_csv(rows: list[dict[str, Any]], path: str | Path) -> None:
         writer = csv.DictWriter(f, fieldnames=[*_CSV_SUMMARY_FIELDS, "steps_json"])
         writer.writeheader()
         for row in rows:
-            csv_row = {field: row[field] for field in _CSV_SUMMARY_FIELDS}
+            csv_row = {field: row.get(field, DEFAULT_TASK_SET) if field == "task_set" else row[field]
+                       for field in _CSV_SUMMARY_FIELDS}
             csv_row["steps_json"] = json.dumps(row["steps"])
             writer.writerow(csv_row)
 

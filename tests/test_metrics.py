@@ -40,7 +40,7 @@ def _step(step_index, tool_name="get_weather", succeeded=True, recovered=False, 
 def _row(condition="sft_only", chain_length=1, task_id="t-0", success=True, steps=None,
          injected_error_at_step=None, failure_step_index=None, failure_error_type=None):
     return {
-        "condition": condition, "chain_length": chain_length, "task_id": task_id,
+        "condition": condition, "task_set": "unseen_tools", "chain_length": chain_length, "task_id": task_id,
         "success": success, "num_steps_attempted": len(steps or []),
         "injected_error_at_step": injected_error_at_step,
         "failure_step_index": failure_step_index, "failure_error_type": failure_error_type,
@@ -60,7 +60,7 @@ def test_task_state_to_row_success_shape():
     row = task_state_to_row("sft_only", task, state)
 
     assert row == {
-        "condition": "sft_only", "chain_length": 1, "task_id": "t1", "success": True,
+        "condition": "sft_only", "task_set": "unseen_tools", "chain_length": 1, "task_id": "t1", "success": True,
         "num_steps_attempted": 1, "injected_error_at_step": None,
         "failure_step_index": None, "failure_error_type": None,
         "steps": [{"step_index": 0, "tool_name": "get_weather", "succeeded": True,
@@ -302,3 +302,27 @@ def test_csv_output_has_readable_summary_columns(tmp_path):
         import csv as _csv
         row = next(_csv.DictReader(f))
     json.loads(row["steps_json"])
+
+
+# --- task_set (seen vs unseen tools) ---
+
+def test_task_state_to_row_records_the_task_set():
+    task = TaskSpec(task_id="g-0", chain_length=1, user_goal="g", expected_tool_sequence=["calculate_bmi"])
+    state = TaskState(task_id="g-0", chain_length=1,
+                      steps=[StepOutcome(step_index=0, tool_name="calculate_bmi", succeeded=True)], final_success=True)
+    assert task_state_to_row("base", task, state, task_set="seen_tools")["task_set"] == "seen_tools"
+
+
+def test_summarize_keeps_seen_and_unseen_tasks_of_the_same_chain_length_apart():
+    rows = [
+        {**_row(condition="base", chain_length=1, success=True, steps=[_step(0)]), "task_set": "unseen_tools"},
+        {**_row(condition="base", chain_length=1, success=False,
+                steps=[_step(0, succeeded=False, error_type="WrongToolError")]), "task_set": "seen_tools"},
+        {k: v for k, v in _row(condition="base", chain_length=1, task_id="old-row", success=True,
+                               steps=[_step(0)]).items() if k != "task_set"},  # pre-split row: no task_set
+    ]
+    result = summarize_by_condition_and_chain_length(rows)
+    by_set = {r["task_set"]: r for r in result}
+    assert by_set["unseen_tools"]["n_tasks"] == 2          # the explicit one plus the legacy row
+    assert by_set["seen_tools"]["n_tasks"] == 1
+    assert by_set["seen_tools"]["full_chain_success_rate"] == 0.0

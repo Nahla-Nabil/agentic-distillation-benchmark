@@ -263,3 +263,60 @@ def test_real_experiment_config_has_harness_chain_lengths_and_retries():
     config = load_experiment_config(REPO_ROOT / "configs" / "experiment.yaml")
     assert config["harness"]["chain_lengths"] == [1, 3, 5]
     assert isinstance(config["harness"]["max_retries_per_step"], int)
+
+
+# --- v2: greedy decoding, seen-tool evaluation ---
+
+def test_make_harness_model_fn_switches_the_model_to_greedy_decoding():
+    tokenizer = _StubTokenizer()
+    model = _FakeGenerateModel([tokenizer._token_id("x")])
+    model.generation_config.temperature = 0.7
+    model.generation_config.top_p = 0.8
+    model.generation_config.top_k = 20
+
+    make_harness_model_fn(model, tokenizer)
+
+    cfg = model.generation_config
+    assert cfg.do_sample is False
+    assert cfg.temperature is None and cfg.top_p is None and cfg.top_k is None
+
+
+def _seen_tool_tasks(n):
+    from adbench.harness.tasks import TaskSpec
+    return [TaskSpec(task_id=f"g-{i}", chain_length=1, user_goal="What is my BMI?",
+                     expected_tool_sequence=["calculate_bmi"]) for i in range(n)]
+
+
+def test_run_seen_tool_eval_tags_rows_reads_glaive_test_and_limits_tasks(monkeypatch):
+    from adbench.evaluation import run_eval
+
+    requested = {}
+
+    def fake_load_tasks(chain_length, source="synthetic", config_path=None):
+        requested["source"] = source
+        return _seen_tool_tasks(5)
+
+    monkeypatch.setattr(run_eval, "load_tasks", fake_load_tasks)
+    correct_call = '<tool_call>{"name": "calculate_bmi", "arguments": {"height": 1.75, "weight": 70}}</tool_call>'
+
+    rows = run_eval.run_seen_tool_eval_for_condition("base", lambda messages: correct_call, n_tasks=3)
+
+    assert requested["source"] == "glaive_test"
+    assert len(rows) == 3
+    assert {r["task_set"] for r in rows} == {"seen_tools"}
+    assert all(r["success"] for r in rows)
+
+
+def test_run_seen_tool_eval_is_skipped_when_n_is_zero(monkeypatch):
+    from adbench.evaluation import run_eval
+
+    def must_not_load(*args, **kwargs):
+        raise AssertionError("tasks should not be loaded when the seen-tool eval is disabled")
+
+    monkeypatch.setattr(run_eval, "load_tasks", must_not_load)
+    assert run_eval.run_seen_tool_eval_for_condition("base", lambda m: "", n_tasks=0) == []
+
+
+def test_real_experiment_config_defines_a_seen_tool_eval_size():
+    config = load_experiment_config(REPO_ROOT / "configs" / "experiment.yaml")
+    assert isinstance(config["harness"]["seen_tool_eval_n"], int)

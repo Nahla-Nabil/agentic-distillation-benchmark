@@ -54,8 +54,13 @@ class KDLossConfig:
     temperature: float = 2.0
     kd_weight: float = 0.5
     sft_weight: float = 0.5
+    # Label smoothing on the SFT cross-entropy term only (the "regularised SFT"
+    # control: it discourages the collapse onto hard labels without any teacher).
+    label_smoothing: float = 0.0
 
     def __post_init__(self) -> None:
+        if not 0.0 <= self.label_smoothing < 1.0:
+            raise ValueError(f"label_smoothing must be in [0, 1), got {self.label_smoothing!r}.")
         if self.temperature <= 0:
             raise ValueError(f"temperature must be > 0, got {self.temperature!r}.")
         if self.kd_weight < 0:
@@ -163,6 +168,7 @@ def combined_loss(
         student_logits.reshape(-1, vocab_size),
         labels.reshape(-1),
         ignore_index=-100,
+        label_smoothing=cfg.label_smoothing,
     )
 
     if cfg.kd_weight > 0:
