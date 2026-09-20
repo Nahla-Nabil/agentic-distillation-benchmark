@@ -24,9 +24,11 @@ multi-step eval" for why this, not real glaive data, is the eval axis).
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any
 
+from adbench.evaluation.batching import BatchedModelFn, configure_greedy, make_batch_generate_fn
 from adbench.evaluation.metrics import (
     DEFAULT_TASK_SET,
     summarize_by_condition_and_chain_length,
@@ -63,21 +65,9 @@ def make_harness_model_fn(model, tokenizer, max_new_tokens: int = 256) -> ModelF
     model.generate() includes in its output by HF convention.
     """
 
-    # Unset the checkpoint's default max_length once here (not per call) —
-    # otherwise every single generate() call below warns that both
-    # max_new_tokens and the model's own generation_config.max_length are
-    # set, which floods the eval output with hundreds of identical,
-    # harmless warnings (one per task step).
-    model.generation_config.max_length = None
-
-    # Greedy decoding: the checkpoint's default generation config samples
-    # (temperature 0.7 ...), which would add sampling noise on top of the
-    # run-to-run training variance the seeds are meant to measure. Set once on
-    # the config, not per call, so transformers doesn't warn on every step.
-    model.generation_config.do_sample = False
-    model.generation_config.temperature = None
-    model.generation_config.top_p = None
-    model.generation_config.top_k = None
+    # Greedy decoding and no default max_length, set once on the generation
+    # config (see batching.configure_greedy for why).
+    configure_greedy(model)
 
     def model_fn(messages: list[dict[str, Any]]) -> str:
         import torch
@@ -108,7 +98,9 @@ def run_harness_eval_for_condition(
     task_set: str = DEFAULT_TASK_SET,
     max_tasks: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Run every task of `task_source` at every given chain length through
+    """(If `model_fn` is a BatchedModelFn the tasks run concurrently, and the
+    rows come back in the same order as a sequential run.)
+    Run every task of `task_source` at every given chain length through
     model_fn, converting each result to a metrics.py row tagged with
     `task_set`. Model-agnostic — model_fn can be a real loaded model wrapped by
     make_harness_model_fn(), or a scripted fake for testing (see
@@ -120,8 +112,14 @@ def run_harness_eval_for_condition(
         tasks = load_tasks(chain_length, source=task_source)
         if max_tasks is not None:
             tasks = tasks[:max_tasks]
-        for task in tasks:
-            state = run_task(model_fn, task, registry, max_retries_per_step=max_retries_per_step)
+        def run_one(task, model_fn=model_fn):
+            return run_task(model_fn, task, registry, max_retries_per_step=max_retries_per_step)
+
+        if isinstance(model_fn, BatchedModelFn):
+            states = model_fn.run_concurrently(run_one, tasks)
+        else:
+            states = [run_one(task) for task in tasks]
+        for task, state in zip(tasks, states, strict=True):
             rows.append(task_state_to_row(condition, task, state, task_set=task_set))
     return rows
 
@@ -207,6 +205,19 @@ def load_condition_model(
     return model, tokenizer
 
 
+def eval_batch_size(experiment_config: dict[str, Any]) -> int:
+    """Concurrent tasks per generate() call: ADBENCH_EVAL_BATCH, else the
+    config's harness.eval_batch_size, else 1 (the original one-at-a-time path)."""
+    return int(os.environ.get("ADBENCH_EVAL_BATCH", experiment_config["harness"].get("eval_batch_size", 1)))
+
+
+def build_model_fn(model, tokenizer, experiment_config: dict[str, Any]):
+    batch = eval_batch_size(experiment_config)
+    if batch > 1:
+        return BatchedModelFn(make_batch_generate_fn(model, tokenizer), max_batch=batch)
+    return make_harness_model_fn(model, tokenizer)
+
+
 def evaluate_condition(
     condition: str,
     experiment_config: dict[str, Any],
@@ -217,15 +228,19 @@ def evaluate_condition(
     the perplexity eval against it. Returns (rows, perplexity)."""
     registry = build_demo_registry()
     model, tokenizer = load_condition_model(condition, experiment_config, models_config)
-    model_fn = make_harness_model_fn(model, tokenizer)
+    model_fn = build_model_fn(model, tokenizer, experiment_config)
 
     max_retries = experiment_config["harness"]["max_retries_per_step"]
-    rows = run_harness_eval_for_condition(
-        condition, model_fn, chain_lengths, registry, max_retries_per_step=max_retries
-    )
-    rows += run_seen_tool_eval_for_condition(
-        condition, model_fn, experiment_config["harness"].get("seen_tool_eval_n", 0), max_retries
-    )
+    try:
+        rows = run_harness_eval_for_condition(
+            condition, model_fn, chain_lengths, registry, max_retries_per_step=max_retries
+        )
+        rows += run_seen_tool_eval_for_condition(
+            condition, model_fn, experiment_config["harness"].get("seen_tool_eval_n", 0), max_retries
+        )
+    finally:
+        if isinstance(model_fn, BatchedModelFn):
+            model_fn.close()
     perplexity = run_perplexity_for_condition(model, tokenizer, experiment_config)
     return rows, perplexity
 
@@ -237,11 +252,15 @@ def evaluate_seen_only(
     no perplexity) — a cheap top-up (~10 minutes per condition) for runs whose
     main evaluation predates argument logging."""
     model, tokenizer = load_condition_model(condition, experiment_config, models_config)
-    model_fn = make_harness_model_fn(model, tokenizer)
-    return run_seen_tool_eval_for_condition(
-        condition, model_fn, experiment_config["harness"].get("seen_tool_eval_n", 0),
-        experiment_config["harness"]["max_retries_per_step"],
-    )
+    model_fn = build_model_fn(model, tokenizer, experiment_config)
+    try:
+        return run_seen_tool_eval_for_condition(
+            condition, model_fn, experiment_config["harness"].get("seen_tool_eval_n", 0),
+            experiment_config["harness"]["max_retries_per_step"],
+        )
+    finally:
+        if isinstance(model_fn, BatchedModelFn):
+            model_fn.close()
 
 
 def write_eval_outputs(
