@@ -303,3 +303,22 @@ def test_label_smoothing_zero_matches_the_previous_behaviour():
     a, _ = combined_loss(logits, None, labels, KDLossConfig(kd_weight=0.0, sft_weight=1.0))
     b, _ = combined_loss(logits, None, labels, KDLossConfig(kd_weight=0.0, sft_weight=1.0, label_smoothing=0.0))
     assert torch.equal(a, b)
+
+
+def test_label_smoothing_loss_stays_finite_for_fp16_logits_with_huge_gaps():
+    """fp16 log-softmax underflows to -inf for very unlikely tokens; the smoothing
+    term averages over the whole vocabulary, so without a float32 cast the loss was
+    inf on every step (seen on T4 in the first v2 run)."""
+    logits = torch.full((1, 3, 8), -60000.0, dtype=torch.float16)
+    labels = torch.tensor([[1, 2, 3]])
+    for i, tok in enumerate(labels[0]):
+        logits[0, i, tok] = 60000.0
+    loss, components = combined_loss(logits, None, labels, KDLossConfig(kd_weight=0.0, sft_weight=1.0, label_smoothing=0.1))
+    assert torch.isfinite(loss) and math.isfinite(components["sft_loss"])
+
+
+def test_plain_cross_entropy_path_is_left_untouched_by_the_float32_cast():
+    logits = torch.randn(2, 4, 7, dtype=torch.float16)
+    labels = torch.randint(0, 7, (2, 4))
+    loss, _ = combined_loss(logits, None, labels, KDLossConfig(kd_weight=0.0, sft_weight=1.0))
+    assert loss.dtype == torch.float16    # unchanged: no smoothing means no cast

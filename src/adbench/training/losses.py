@@ -164,8 +164,13 @@ def combined_loss(
     mask = labels != -100
     vocab_size = student_logits.size(-1)
 
+    # Label smoothing averages -log p over the WHOLE vocabulary, and in fp16 (T4) the
+    # log-softmax of unlikely tokens underflows to -inf, making the loss inf on every
+    # step. Only that variant needs the float32 cast; leaving the plain CE path
+    # untouched keeps every other condition numerically identical to earlier runs.
+    ce_logits = student_logits.float() if cfg.label_smoothing > 0 else student_logits
     sft_loss = F.cross_entropy(
-        student_logits.reshape(-1, vocab_size),
+        ce_logits.reshape(-1, vocab_size),
         labels.reshape(-1),
         ignore_index=-100,
         label_smoothing=cfg.label_smoothing,
