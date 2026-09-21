@@ -90,13 +90,19 @@ _PROTOCOL_ERROR_NAMES = {"ProtocolError", "MalformedCallError", "UnknownToolErro
 DEFAULT_TASK_SET = "unseen_tools"
 
 
-def task_state_to_row(condition: str, task: Any, state: Any, task_set: str = DEFAULT_TASK_SET) -> dict[str, Any]:
+def task_state_to_row(
+    condition: str, task: Any, state: Any, task_set: str = DEFAULT_TASK_SET, keep_transcript: bool = False
+) -> dict[str, Any]:
     """Convert one executor.run_task() result into the row schema documented
     above. `task` is the TaskSpec that was run (for injected_error_at_step);
     `state` is the TaskState run_task() returned. `task_set` names which
     evaluation set the task came from ("unseen_tools": the synthetic six-tool
-    vocabulary the students never trained on; "seen_tools": held-out Glaive
-    tasks over the training tools)."""
+    vocabulary the students never trained on; "unseen_tools_ext": the extended
+    12-tool synthetic set; "seen_tools": held-out Glaive tasks over the
+    training tools). `keep_transcript` adds the full conversation minus the
+    system prompt (user goal, the model's raw outputs, tool results) under
+    "transcript", for failure-mode analysis; off by default so existing
+    result files keep their exact schema and size."""
     steps = [
         {
             "step_index": s.step_index,
@@ -117,7 +123,7 @@ def task_state_to_row(condition: str, task: Any, state: Any, task_set: str = DEF
         failure_step_index = last.step_index
         failure_error_type = last.error_type
 
-    return {
+    row = {
         "condition": condition,
         "task_set": task_set,
         "chain_length": state.chain_length,
@@ -129,6 +135,13 @@ def task_state_to_row(condition: str, task: Any, state: Any, task_set: str = DEF
         "failure_error_type": failure_error_type,
         "steps": steps,
     }
+    if keep_transcript:
+        row["transcript"] = [
+            {"role": m["role"], "content": m["content"]}
+            for m in getattr(state, "messages", [])
+            if m.get("role") != "system"
+        ]
+    return row
 
 
 def _all_steps(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

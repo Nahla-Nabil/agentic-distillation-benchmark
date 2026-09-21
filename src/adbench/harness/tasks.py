@@ -420,6 +420,341 @@ def _gen_chain5_tasks() -> list[TaskSpec]:
     return tasks
 
 
+# --------------------------------------------------------------------------
+# Extended synthetic set ("synthetic_ext"): NEW templates over a 12-tool
+# vocabulary (the six demo tools + six more, tools.build_extended_registry()).
+# It is disjoint from the original 121 tasks — no template or tool sequence is
+# reused — and is evaluated as its own task_set ("unseen_tools_ext"), so every
+# result already collected on the original set stays valid and comparable.
+# More templates (not just more parameter values) is the point: templates, not
+# tasks, are the unit that limits statistical power (see the README's
+# "Statistics" section).
+# --------------------------------------------------------------------------
+
+_CAPITAL_COUNTRIES = ["france", "japan", "egypt", "germany"]  # capitals that exist in WEATHER_TABLE
+_COUNTRIES = ["china", "india", "united states", "indonesia", "brazil",
+              "japan", "egypt", "germany", "france", "united kingdom"]
+_MOUNTAINS = ["everest", "aconcagua", "denali", "kilimanjaro", "elbrus", "mont blanc", "matterhorn", "fuji"]
+_LENGTHS = [(5, "km", "mi"), (12000, "ft", "m"), (3.5, "mi", "km"), (800, "m", "ft")]
+_DIGITS = [0, 1, 2, 3]
+_THRESHOLDS = [12, 18, 24, 30]
+
+
+def _ext_params(i: int, offset: int) -> dict[str, Any]:
+    """Deterministic parameter pool for the i-th variation of a template.
+    `offset` (the template's index) shifts every pool so two templates never
+    get the same values for the same slot."""
+    k = i + offset
+    return {
+        "cap_country": _CAPITAL_COUNTRIES[k % len(_CAPITAL_COUNTRIES)],
+        "country_a": _COUNTRIES[k % 10], "country_b": _COUNTRIES[(k + 3) % 10],
+        "mountain_a": _MOUNTAINS[k % 8], "mountain_b": _MOUNTAINS[(k + 3) % 8],
+        "city_a": _CITIES[k % 10], "city_b": _CITIES[(k + 4) % 10],
+        "expr_a": _CALC_EXPRESSIONS[k % 8], "expr_b": _CALC_EXPRESSIONS[(k + 3) % 8],
+        "temp": _TEMP_CONVERSIONS[k % 6],
+        "zone": _ZONES[k % 8], "topic": _TOPICS[k % 7],
+        "length": _LENGTHS[k % 4], "digits": _DIGITS[k % 4], "threshold": _THRESHOLDS[k % 4],
+        "num_a": [42, 7.5, 63, 120][k % 4], "num_b": [17, 12.25, 99, 80][(k + 1) % 4],
+    }
+
+
+def _ext_expand(
+    id_prefix: str, offset: int, tool_sequence: list[str], goal_fn: Any, n_variations: int = 4,
+) -> list[TaskSpec]:
+    return _expand(id_prefix, tool_sequence, goal_fn, [_ext_params(i, offset) for i in range(n_variations)])
+
+
+def _gen_ext_chain1_tasks() -> list[TaskSpec]:
+    """6 new tools x 5 variations = 30 single-step tasks."""
+    T = _ext_expand  # noqa: N806 — short alias, local to this function
+    tasks: list[TaskSpec] = []
+    tasks += T("x1-population", 0, ["get_population"], lambda p: f"How many people live in {p['country_a'].title()}?", 5)
+    tasks += T("x1-capital", 1, ["get_capital"], lambda p: f"What is the capital of {p['country_b'].title()}?", 5)
+    tasks += T("x1-elevation", 2, ["get_elevation"], lambda p: f"How high is {p['mountain_a'].title()}?", 5)
+    tasks += T(
+        "x1-length", 3, ["convert_length"],
+        lambda p: f"Convert {p['length'][0]} {p['length'][1]} to {p['length'][2]}.", 5,
+    )
+    tasks += T(
+        "x1-average", 4, ["average_numbers"],
+        lambda p: f"What is the average of {p['num_a']} and {p['num_b']}?", 5,
+    )
+    tasks += T(
+        "x1-round", 5, ["round_number"],
+        lambda p: f"Round {p['num_b']} to {p['digits']} decimal places.", 5,
+    )
+    return tasks
+
+
+def _gen_ext_chain3_tasks() -> list[TaskSpec]:
+    """16 templates x 4 variations = 64 three-step tasks."""
+    T = _ext_expand  # noqa: N806
+    tasks: list[TaskSpec] = []
+    tasks += T(
+        "x3-capital_weather_convert", 0, ["get_capital", "get_weather", "convert_temperature"],
+        lambda p: (
+            f"Find the capital of {p['cap_country'].title()}, check the weather there, "
+            "and convert that temperature to Celsius."
+        ),
+    )
+    tasks += T(
+        "x3-population_population_compare", 1, ["get_population", "get_population", "compare_numbers"],
+        lambda p: (
+            f"Look up the population of {p['country_a'].title()} and of {p['country_b'].title()}, "
+            "then tell me which one has more people."
+        ),
+    )
+    tasks += T(
+        "x3-elevation_convert_compare", 2, ["get_elevation", "convert_length", "compare_numbers"],
+        lambda p: (
+            f"Look up the elevation of {p['mountain_a'].title()}, convert it to feet, "
+            f"then compare it with {p['threshold'] * 300} feet."
+        ),
+    )
+    tasks += T(
+        "x3-length_length_compare", 3, ["convert_length", "convert_length", "compare_numbers"],
+        lambda p: (
+            f"Convert {p['length'][0]} {p['length'][1]} to metres, convert {p['num_a']} kilometres "
+            "to metres too, then tell me which distance is longer."
+        ),
+    )
+    tasks += T(
+        "x3-calc_calc_average", 4, ["calculator", "calculator", "average_numbers"],
+        lambda p: f"Compute {p['expr_a']}, separately compute {p['expr_b']}, then average the two results.",
+    )
+    tasks += T(
+        "x3-weather_weather_average", 5, ["get_weather", "get_weather", "average_numbers"],
+        lambda p: (
+            f"Check the weather in {p['city_a'].title()} and in {p['city_b'].title()}, "
+            "then compute the average of the two temperatures."
+        ),
+    )
+    tasks += T(
+        "x3-population_calc_round", 6, ["get_population", "calculator", "round_number"],
+        lambda p: (
+            f"Look up the population of {p['country_a'].title()}, compute {p['expr_a']}, "
+            f"and round the calculation result to {p['digits']} decimal places."
+        ),
+    )
+    tasks += T(
+        "x3-elevation_elevation_compare", 7, ["get_elevation", "get_elevation", "compare_numbers"],
+        lambda p: f"Look up the elevation of {p['mountain_a'].title()} and {p['mountain_b'].title()}, then tell me which is higher.",
+    )
+    tasks += T(
+        "x3-capital_weather_time", 8, ["get_capital", "get_weather", "get_current_time"],
+        lambda p: (
+            f"Find the capital of {p['cap_country'].title()}, check the weather there, "
+            f"then tell me the current time in {p['zone'].upper()}."
+        ),
+    )
+    tasks += T(
+        "x3-kb_population_calc", 9, ["search_knowledge_base", "get_population", "calculator"],
+        lambda p: (
+            f"Look up '{p['topic']}' in the knowledge base, get the population of "
+            f"{p['country_a'].title()}, then compute {p['expr_b']}."
+        ),
+    )
+    tasks += T(
+        "x3-convert_average_round", 10, ["convert_temperature", "average_numbers", "round_number"],
+        lambda p: (
+            f"Convert {p['temp'][0]} degrees {p['temp'][1]} to Celsius, average that with {p['num_a']}, "
+            f"and round the average to {p['digits']} decimal places."
+        ),
+    )
+    tasks += T(
+        "x3-elevation_calc_round", 11, ["get_elevation", "calculator", "round_number"],
+        lambda p: (
+            f"Look up the elevation of {p['mountain_a'].title()}, compute {p['expr_a']}, "
+            f"then round the calculation result to {p['digits']} decimal places."
+        ),
+    )
+    tasks += T(
+        "x3-weather_elevation_compare", 12, ["get_weather", "get_elevation", "compare_numbers"],
+        lambda p: (
+            f"Check the weather in {p['city_a'].title()} and look up the elevation of "
+            f"{p['mountain_a'].title()}, then compare the two numbers."
+        ),
+    )
+    tasks += T(
+        "x3-average_convert_compare", 13, ["average_numbers", "convert_temperature", "compare_numbers"],
+        lambda p: (
+            f"Average {p['num_a']} and {p['num_b']}, convert {p['temp'][0]} degrees {p['temp'][1]} "
+            "to Celsius, then compare the two results."
+        ),
+    )
+    tasks += T(
+        "x3-time_capital_population", 14, ["get_current_time", "get_capital", "get_population"],
+        lambda p: (
+            f"Tell me the current time in {p['zone'].upper()}, find the capital of "
+            f"{p['country_a'].title()}, then look up that country's population."
+        ),
+    )
+    tasks += T(
+        "x3-round_round_compare", 15, ["round_number", "round_number", "compare_numbers"],
+        lambda p: (
+            f"Round {p['num_a']} to {p['digits']} decimal places, round {p['num_b']} to "
+            f"{p['digits']} decimal places, then tell me which rounded value is larger."
+        ),
+    )
+    return tasks
+
+
+def _gen_ext_chain5_tasks() -> list[TaskSpec]:
+    """16 templates x 4 variations = 64 five-step tasks."""
+    T = _ext_expand  # noqa: N806
+    tasks: list[TaskSpec] = []
+    tasks += T(
+        "x5-capital_weather_convert_compare_round", 0,
+        ["get_capital", "get_weather", "convert_temperature", "compare_numbers", "round_number"],
+        lambda p: (
+            f"Find the capital of {p['cap_country'].title()}, check the weather there, convert it to "
+            f"Celsius, compare it with {p['threshold']}°C, then round the Celsius value to "
+            f"{p['digits']} decimal places."
+        ),
+    )
+    tasks += T(
+        "x5-population_population_compare_calc_round", 1,
+        ["get_population", "get_population", "compare_numbers", "calculator", "round_number"],
+        lambda p: (
+            f"Get the population of {p['country_a'].title()} and of {p['country_b'].title()}, compare them, "
+            f"compute {p['expr_a']}, and round that result to {p['digits']} decimal places."
+        ),
+    )
+    tasks += T(
+        "x5-elevation_convert_elevation_convert_compare", 2,
+        ["get_elevation", "convert_length", "get_elevation", "convert_length", "compare_numbers"],
+        lambda p: (
+            f"Look up the elevation of {p['mountain_a'].title()} and convert it to feet. Then look up "
+            f"{p['mountain_b'].title()} and convert that to feet too. Finally tell me which is higher."
+        ),
+    )
+    tasks += T(
+        "x5-weather_weather_average_convert_round", 3,
+        ["get_weather", "get_weather", "average_numbers", "convert_temperature", "round_number"],
+        lambda p: (
+            f"Check the weather in {p['city_a'].title()} and {p['city_b'].title()}, average the two "
+            f"temperatures, convert the average to Celsius, and round it to {p['digits']} decimal places."
+        ),
+    )
+    tasks += T(
+        "x5-calc_calc_average_round_compare", 4,
+        ["calculator", "calculator", "average_numbers", "round_number", "compare_numbers"],
+        lambda p: (
+            f"Compute {p['expr_a']} and {p['expr_b']}, average the two results, round the average to "
+            f"{p['digits']} decimal places, then compare it with {p['num_a']}."
+        ),
+    )
+    tasks += T(
+        "x5-capital_time_weather_convert_compare", 5,
+        ["get_capital", "get_current_time", "get_weather", "convert_temperature", "compare_numbers"],
+        lambda p: (
+            f"Find the capital of {p['cap_country'].title()}, tell me the current time in {p['zone'].upper()}, "
+            f"check the weather in that capital, convert it to Celsius, then compare it with {p['threshold']}°C."
+        ),
+    )
+    tasks += T(
+        "x5-kb_elevation_convert_calc_round", 6,
+        ["search_knowledge_base", "get_elevation", "convert_length", "calculator", "round_number"],
+        lambda p: (
+            f"Look up '{p['topic']}', get the elevation of {p['mountain_a'].title()}, convert it to miles, "
+            f"compute {p['expr_a']}, and round that calculation to {p['digits']} decimal places."
+        ),
+    )
+    tasks += T(
+        "x5-population_capital_weather_convert_average", 7,
+        ["get_population", "get_capital", "get_weather", "convert_temperature", "average_numbers"],
+        lambda p: (
+            f"Get the population of {p['cap_country'].title()}, find its capital, check the weather there, "
+            f"convert it to Celsius, then average that with {p['num_a']}."
+        ),
+    )
+    tasks += T(
+        "x5-length_calc_average_compare_round", 8,
+        ["convert_length", "calculator", "average_numbers", "compare_numbers", "round_number"],
+        lambda p: (
+            f"Convert {p['length'][0]} {p['length'][1]} to {p['length'][2]}, compute {p['expr_b']}, average the "
+            f"two numbers, compare the average with {p['num_a']}, and round {p['num_b']} to {p['digits']} decimal places."
+        ),
+    )
+    tasks += T(
+        "x5-time_elevation_population_compare_calc", 9,
+        ["get_current_time", "get_elevation", "get_population", "compare_numbers", "calculator"],
+        lambda p: (
+            f"Tell me the time in {p['zone'].upper()}, look up the elevation of {p['mountain_a'].title()} and the "
+            f"population of {p['country_a'].title()}, compare those two numbers, and compute {p['expr_a']}."
+        ),
+    )
+    tasks += T(
+        "x5-weather_convert_elevation_convert_compare", 10,
+        ["get_weather", "convert_temperature", "get_elevation", "convert_length", "compare_numbers"],
+        lambda p: (
+            f"Check the weather in {p['city_a'].title()} and convert it to Celsius. Look up the elevation "
+            f"of {p['mountain_a'].title()} and convert it to kilometres. Then compare the two numbers."
+        ),
+    )
+    tasks += T(
+        "x5-capital_population_calc_round_weather", 11,
+        ["get_capital", "get_population", "calculator", "round_number", "get_weather"],
+        lambda p: (
+            f"Find the capital of {p['cap_country'].title()}, get that country's population, compute "
+            f"{p['expr_a']}, round the result to {p['digits']} decimal places, then check the weather in the capital."
+        ),
+    )
+    tasks += T(
+        "x5-average_convert_calc_compare_round", 12,
+        ["average_numbers", "convert_temperature", "calculator", "compare_numbers", "round_number"],
+        lambda p: (
+            f"Average {p['num_a']} and {p['num_b']}, convert {p['temp'][0]} degrees {p['temp'][1]} to Celsius, "
+            f"compute {p['expr_a']}, compare the two calculated results, and round {p['num_b']} to {p['digits']} decimals."
+        ),
+    )
+    tasks += T(
+        "x5-elevation_elevation_average_convert_round", 13,
+        ["get_elevation", "get_elevation", "average_numbers", "convert_length", "round_number"],
+        lambda p: (
+            f"Look up the elevation of {p['mountain_a'].title()} and {p['mountain_b'].title()}, average them, "
+            f"convert the average to feet, and round it to {p['digits']} decimal places."
+        ),
+    )
+    tasks += T(
+        "x5-population_calc_compare_capital_weather", 14,
+        ["get_population", "calculator", "compare_numbers", "get_capital", "get_weather"],
+        lambda p: (
+            f"Get the population of {p['cap_country'].title()}, compute {p['expr_a']}, compare the two numbers, "
+            "then find that country's capital and check the weather there."
+        ),
+    )
+    tasks += T(
+        "x5-kb_weather_capital_convert_compare", 15,
+        ["search_knowledge_base", "get_weather", "get_capital", "convert_temperature", "compare_numbers"],
+        lambda p: (
+            f"Look up '{p['topic']}', check the weather in {p['city_a'].title()}, find the capital of "
+            f"{p['cap_country'].title()}, convert the temperature to Celsius, then compare it with {p['threshold']}°C."
+        ),
+    )
+    return tasks
+
+
+def build_extended_tasks(chain_length: int) -> list[TaskSpec]:
+    """The extended synthetic set for one chain length (see the section comment
+    above). Validated against the extended registry, like build_synthetic_tasks
+    is against the demo one."""
+    from adbench.harness.tools import build_extended_registry
+
+    generators = {1: _gen_ext_chain1_tasks, 3: _gen_ext_chain3_tasks, 5: _gen_ext_chain5_tasks}
+    if chain_length not in generators:
+        raise ValueError(
+            f"No extended scenarios defined for chain_length={chain_length}; supported: {sorted(generators)}"
+        )
+    registry = build_extended_registry()
+    tasks = _assign_injected_errors(generators[chain_length]())
+    for task in tasks:
+        for name in task.expected_tool_sequence:
+            if not registry.has(name):
+                raise ValueError(f"Task {task.task_id!r} expects unknown tool {name!r}.")
+    return tasks
+
+
 def _assign_injected_errors(tasks: list[TaskSpec]) -> list[TaskSpec]:
     """Deterministically mark every 4th task's first attempt at one step to
     fail (configs/experiment.yaml: harness.inject_errors), cycling the
@@ -512,6 +847,11 @@ def load_tasks(
     if source == "synthetic":
         return build_synthetic_tasks(chain_length)
 
+    if source == "synthetic_ext":
+        # NEW templates over the 12-tool extended vocabulary; callers must pass
+        # tools.build_extended_registry() to executor.run_task().
+        return build_extended_tasks(chain_length)
+
     if source in ("glaive_train", "glaive_test"):
         if chain_length != 1:
             raise ValueError(
@@ -545,5 +885,5 @@ def load_tasks(
         ]
 
     raise ValueError(
-        f"Unknown source {source!r}; expected 'synthetic', 'glaive_train', or 'glaive_test'."
+        f"Unknown source {source!r}; expected 'synthetic', 'synthetic_ext', 'glaive_train', or 'glaive_test'."
     )

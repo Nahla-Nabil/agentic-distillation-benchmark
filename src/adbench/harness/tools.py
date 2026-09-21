@@ -339,6 +339,156 @@ DEMO_REGISTRY = build_demo_registry()
 
 
 # --------------------------------------------------------------------------
+# Extended tool set — six more tools the students never trained on (none of
+# them is one of the eight Glaive training tools), used ONLY by the extended
+# synthetic eval (tasks.load_tasks(source="synthetic_ext")) through
+# build_extended_registry(). Kept out of build_demo_registry() on purpose:
+# the harness lists every registered tool in the system prompt, so adding
+# tools there would change the prompt of the original 121 tasks and break
+# comparability with every run already done.
+# --------------------------------------------------------------------------
+
+POPULATION_TABLE = {  # millions of people
+    "china": 1412, "india": 1408, "united states": 333, "indonesia": 276, "brazil": 214,
+    "japan": 125, "egypt": 109, "germany": 84, "france": 68, "united kingdom": 67,
+}
+
+CAPITAL_TABLE = {
+    "france": "paris", "japan": "tokyo", "egypt": "cairo", "germany": "berlin",
+    "united kingdom": "london", "india": "new delhi", "brazil": "brasilia",
+    "china": "beijing", "united states": "washington", "indonesia": "jakarta",
+}
+
+ELEVATION_TABLE = {  # metres above sea level
+    "everest": 8849, "aconcagua": 6961, "denali": 6190, "kilimanjaro": 5895,
+    "elbrus": 5642, "mont blanc": 4808, "matterhorn": 4478, "fuji": 3776,
+}
+
+_LENGTH_UNIT_METRES = {
+    "m": 1.0, "meter": 1.0, "meters": 1.0, "metre": 1.0, "metres": 1.0,
+    "km": 1000.0, "kilometer": 1000.0, "kilometers": 1000.0,
+    "ft": 0.3048, "foot": 0.3048, "feet": 0.3048,
+    "mi": 1609.344, "mile": 1609.344, "miles": 1609.344,
+}
+
+
+def get_population(country: str) -> dict[str, Any]:
+    """Failure mode: unknown country -> ToolExecutionError."""
+    key = country.strip().lower()
+    if key not in POPULATION_TABLE:
+        raise ToolExecutionError(f"No population data for country {country!r}.")
+    return {"country": country, "population_millions": POPULATION_TABLE[key]}
+
+
+def get_capital(country: str) -> dict[str, Any]:
+    """Failure mode: unknown country -> ToolExecutionError."""
+    key = country.strip().lower()
+    if key not in CAPITAL_TABLE:
+        raise ToolExecutionError(f"No capital on record for country {country!r}.")
+    return {"country": country, "capital": CAPITAL_TABLE[key]}
+
+
+def get_elevation(place: str) -> dict[str, Any]:
+    """Failure mode: unknown mountain -> ToolExecutionError."""
+    key = place.strip().lower()
+    if key not in ELEVATION_TABLE:
+        raise ToolExecutionError(f"No elevation data for {place!r}.")
+    return {"place": place, "elevation_m": ELEVATION_TABLE[key]}
+
+
+def convert_length(value: float, from_unit: str, to_unit: str) -> dict[str, Any]:
+    """Failure mode: unknown unit (use m, km, ft, mi) or negative value -> ToolArgumentError."""
+    f = _LENGTH_UNIT_METRES.get(from_unit.strip().lower())
+    t = _LENGTH_UNIT_METRES.get(to_unit.strip().lower())
+    if f is None or t is None:
+        raise ToolArgumentError(f"Unknown length unit: {from_unit!r} or {to_unit!r} (use m, km, ft, or mi).")
+    if value < 0:
+        raise ToolArgumentError(f"value must be non-negative, got {value!r}.")
+    return {
+        "value": value, "from_unit": from_unit, "to_unit": to_unit,
+        "converted_value": round(value * f / t, 2),
+    }
+
+
+def average_numbers(a: float, b: float) -> dict[str, Any]:
+    """Failure mode: non-finite input (NaN/infinity) -> ToolArgumentError."""
+    if not (math.isfinite(a) and math.isfinite(b)):
+        raise ToolArgumentError(f"a and b must be finite numbers, got a={a!r}, b={b!r}.")
+    return {"a": a, "b": b, "average": round((a + b) / 2, 4)}
+
+
+def round_number(value: float, decimals: int) -> dict[str, Any]:
+    """Failure mode: non-finite value, or decimals outside 0-10 -> ToolArgumentError."""
+    if not math.isfinite(value):
+        raise ToolArgumentError(f"value must be a finite number, got {value!r}.")
+    if not isinstance(decimals, int) or isinstance(decimals, bool) or not 0 <= decimals <= 10:
+        raise ToolArgumentError(f"decimals must be an integer between 0 and 10, got {decimals!r}.")
+    return {"value": value, "decimals": decimals, "rounded": round(value, decimals)}
+
+
+def _string_param(name: str) -> dict[str, Any]:
+    return {"type": "object", "properties": {name: {"type": "string"}}, "required": [name]}
+
+
+def build_extended_registry() -> ToolRegistry:
+    """The six demo tools plus six extra ones (12 in total). Fresh instance per call."""
+    registry = build_demo_registry()
+    registry.register(ToolSpec(
+        name="get_population",
+        description="Get the population (in millions) of a country.",
+        parameters_schema=_string_param("country"),
+        fn=get_population,
+    ))
+    registry.register(ToolSpec(
+        name="get_capital",
+        description="Get the capital city of a country.",
+        parameters_schema=_string_param("country"),
+        fn=get_capital,
+    ))
+    registry.register(ToolSpec(
+        name="get_elevation",
+        description="Get the elevation (in metres) of a famous mountain.",
+        parameters_schema=_string_param("place"),
+        fn=get_elevation,
+    ))
+    registry.register(ToolSpec(
+        name="convert_length",
+        description="Convert a length between metres (m), kilometres (km), feet (ft) and miles (mi).",
+        parameters_schema={
+            "type": "object",
+            "properties": {
+                "value": {"type": "number"},
+                "from_unit": {"type": "string"},
+                "to_unit": {"type": "string"},
+            },
+            "required": ["value", "from_unit", "to_unit"],
+        },
+        fn=convert_length,
+    ))
+    registry.register(ToolSpec(
+        name="average_numbers",
+        description="Compute the average of two numbers.",
+        parameters_schema={
+            "type": "object",
+            "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+            "required": ["a", "b"],
+        },
+        fn=average_numbers,
+    ))
+    registry.register(ToolSpec(
+        name="round_number",
+        description="Round a number to a given count of decimal places (0-10).",
+        parameters_schema={
+            "type": "object",
+            "properties": {"value": {"type": "number"}, "decimals": {"type": "integer"}},
+            "required": ["value", "decimals"],
+        },
+        fn=round_number,
+    ))
+    return registry
+
+
+# --------------------------------------------------------------------------
 # Glaive-derived tool set — deterministic mock implementations of the 8 tool
 # types selected from glaiveai/glaive-function-calling-v2 by
 # data/prepare.py (see configs/data.yaml:subset.selected_tools). Kept

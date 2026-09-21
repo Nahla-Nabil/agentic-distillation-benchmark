@@ -43,7 +43,12 @@ from adbench.evaluation.perplexity import (
 )
 from adbench.harness.executor import ModelFn, run_task
 from adbench.harness.tasks import load_tasks
-from adbench.harness.tools import ToolRegistry, build_demo_registry, build_glaive_registry
+from adbench.harness.tools import (
+    ToolRegistry,
+    build_demo_registry,
+    build_extended_registry,
+    build_glaive_registry,
+)
 from adbench.training.train import (
     ALL_CONDITIONS,
     CONDITIONS,
@@ -97,6 +102,7 @@ def run_harness_eval_for_condition(
     task_source: str = "synthetic",
     task_set: str = DEFAULT_TASK_SET,
     max_tasks: int | None = None,
+    keep_transcript: bool | None = None,
 ) -> list[dict[str, Any]]:
     """(If `model_fn` is a BatchedModelFn the tasks run concurrently, and the
     rows come back in the same order as a sequential run.)
@@ -105,7 +111,11 @@ def run_harness_eval_for_condition(
     `task_set`. Model-agnostic — model_fn can be a real loaded model wrapped by
     make_harness_model_fn(), or a scripted fake for testing (see
     tests/test_run_eval.py). `max_tasks` keeps only the first N tasks per chain
-    length (for the seen-tool set, which is large)."""
+    length (for the seen-tool set, which is large). `keep_transcript` stores each
+    task's full conversation in its row (default: on when the environment variable
+    ADBENCH_STORE_TRANSCRIPTS=1), for failure-mode analysis."""
+    if keep_transcript is None:
+        keep_transcript = os.environ.get("ADBENCH_STORE_TRANSCRIPTS") == "1"
     registry = registry or build_demo_registry()
     rows = []
     for chain_length in chain_lengths:
@@ -120,8 +130,31 @@ def run_harness_eval_for_condition(
         else:
             states = [run_one(task) for task in tasks]
         for task, state in zip(tasks, states, strict=True):
-            rows.append(task_state_to_row(condition, task, state, task_set=task_set))
+            rows.append(task_state_to_row(condition, task, state, task_set=task_set, keep_transcript=keep_transcript))
     return rows
+
+
+EXT_TASK_SET = "unseen_tools_ext"
+
+
+def ext_eval_enabled(experiment_config: dict[str, Any]) -> bool:
+    """Also run the extended synthetic set (new templates, 12 tools)? Off unless
+    ADBENCH_EXT_EVAL=1 or harness.ext_eval is true, so runs that predate it keep
+    their exact task list."""
+    default = "1" if experiment_config["harness"].get("ext_eval", False) else "0"
+    return os.environ.get("ADBENCH_EXT_EVAL", default) == "1"
+
+
+def run_ext_eval_for_condition(
+    condition: str, model_fn: ModelFn, chain_lengths: list[int], max_retries_per_step: int = 2
+) -> list[dict[str, Any]]:
+    """The extended synthetic tasks (new templates over the 12-tool vocabulary),
+    tagged task_set="unseen_tools_ext" so they never mix into the original
+    unseen-tool numbers."""
+    return run_harness_eval_for_condition(
+        condition, model_fn, chain_lengths, build_extended_registry(), max_retries_per_step,
+        task_source="synthetic_ext", task_set=EXT_TASK_SET,
+    )
 
 
 def run_seen_tool_eval_for_condition(
@@ -238,11 +271,31 @@ def evaluate_condition(
         rows += run_seen_tool_eval_for_condition(
             condition, model_fn, experiment_config["harness"].get("seen_tool_eval_n", 0), max_retries
         )
+        if ext_eval_enabled(experiment_config):
+            rows += run_ext_eval_for_condition(condition, model_fn, chain_lengths, max_retries)
     finally:
         if isinstance(model_fn, BatchedModelFn):
             model_fn.close()
     perplexity = run_perplexity_for_condition(model, tokenizer, experiment_config)
     return rows, perplexity
+
+
+def evaluate_ext_only(
+    condition: str, experiment_config: dict[str, Any], models_config: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Just the extended synthetic tasks for one condition (no original tasks, no
+    perplexity) — for adding the new task set to checkpoints that were already
+    evaluated on the original one."""
+    model, tokenizer = load_condition_model(condition, experiment_config, models_config)
+    model_fn = build_model_fn(model, tokenizer, experiment_config)
+    try:
+        return run_ext_eval_for_condition(
+            condition, model_fn, experiment_config["harness"]["chain_lengths"],
+            experiment_config["harness"]["max_retries_per_step"],
+        )
+    finally:
+        if isinstance(model_fn, BatchedModelFn):
+            model_fn.close()
 
 
 def evaluate_seen_only(
@@ -300,6 +353,10 @@ def main() -> None:
         "--seen-only", action="store_true",
         help="Evaluate only the held-out seen-tool tasks (with argument accuracy); write to --output-dir.",
     )
+    parser.add_argument(
+        "--ext-only", action="store_true",
+        help="Evaluate only the extended synthetic tasks (new templates, 12 tools); write to --output-dir.",
+    )
     parser.add_argument("--experiment-config", default="configs/experiment.yaml")
     parser.add_argument("--models-config", default="configs/models.yaml")
     parser.add_argument("--output-dir", default="results")
@@ -315,6 +372,17 @@ def main() -> None:
             parser.error(f"unknown condition(s) {unknown}; choose from {list(ALL_CONDITIONS)}")
     else:
         conditions = [args.condition] if args.condition else list(CONDITIONS)
+
+    if args.ext_only:
+        ext_rows: list[dict[str, Any]] = []
+        for condition in conditions:
+            print(f"=== Extended-task evaluation: {condition} ===")
+            rows = evaluate_ext_only(condition, experiment_config, models_config)
+            ext_rows.extend(rows)
+            print(f"{condition}: {len(rows)} extended tasks")
+        output = write_eval_outputs(ext_rows, {}, REPO_ROOT / args.output_dir)
+        print(json.dumps(output["summary"], indent=2))
+        return
 
     if args.seen_only:
         seen_rows: list[dict[str, Any]] = []
