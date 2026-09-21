@@ -280,6 +280,55 @@ def evaluate_condition(
     return rows, perplexity
 
 
+RERUN_TASK_SET = "unseen_tools_rerun"
+
+
+def agreement_with_recorded(
+    rerun_rows: list[dict[str, Any]], recorded_rows: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """How closely a (batched) re-run of the original unseen-tool tasks reproduces
+    rows recorded by an earlier one-at-a-time run of the same checkpoint: number
+    of tasks compared, tasks with the same success flag, and tasks whose whole
+    step-by-step tool-name sequence is identical. Tasks are matched by task_id."""
+    recorded = {r["task_id"]: r for r in recorded_rows}
+    compared = same_success = same_steps = 0
+    for row in rerun_rows:
+        old = recorded.get(row["task_id"])
+        if old is None:
+            continue
+        compared += 1
+        same_success += row["success"] == old["success"]
+        same_steps += [s["tool_name"] for s in row["steps"]] == [s["tool_name"] for s in old["steps"]]
+    return {"compared": compared, "same_success": same_success, "same_steps": same_steps}
+
+
+def reevaluate_condition(
+    condition: str,
+    experiment_config: dict[str, Any],
+    models_config: dict[str, Any],
+    rerun_original: bool = True,
+) -> list[dict[str, Any]]:
+    """Load one checkpoint once and run (a) the extended synthetic tasks and, if
+    `rerun_original`, (b) the original unseen-tool tasks again, tagged
+    task_set="unseen_tools_rerun" so they never mix with the recorded rows. The
+    re-run exists to check batched decoding against the recorded one-at-a-time
+    results (see agreement_with_recorded) and to capture transcripts."""
+    model, tokenizer = load_condition_model(condition, experiment_config, models_config)
+    model_fn = build_model_fn(model, tokenizer, experiment_config)
+    harness = experiment_config["harness"]
+    chain_lengths, max_retries = harness["chain_lengths"], harness["max_retries_per_step"]
+    try:
+        rows = run_ext_eval_for_condition(condition, model_fn, chain_lengths, max_retries)
+        if rerun_original:
+            rows += run_harness_eval_for_condition(
+                condition, model_fn, chain_lengths, build_demo_registry(), max_retries, task_set=RERUN_TASK_SET
+            )
+        return rows
+    finally:
+        if isinstance(model_fn, BatchedModelFn):
+            model_fn.close()
+
+
 def evaluate_ext_only(
     condition: str, experiment_config: dict[str, Any], models_config: dict[str, Any]
 ) -> list[dict[str, Any]]:

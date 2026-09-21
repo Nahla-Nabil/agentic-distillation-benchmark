@@ -182,3 +182,18 @@ def test_average_and_round():
         round_number(1.0, 11)
     with pytest.raises(ToolArgumentError):
         round_number(1.0, 1.5)
+
+
+# ---- agreement between a batched re-run and recorded rows -------------------
+
+def _row(task_id, success, tools):
+    return {"task_id": task_id, "success": success, "steps": [{"tool_name": t} for t in tools]}
+
+
+def test_agreement_with_recorded_counts_matching_tasks_only():
+    from adbench.evaluation.run_eval import agreement_with_recorded
+
+    recorded = [_row("a", True, ["x", "y"]), _row("b", False, ["x"]), _row("c", True, ["z"])]
+    rerun = [_row("a", True, ["x", "y"]), _row("b", True, ["x"]), _row("d", True, ["q"])]
+    # "d" has no recorded counterpart and is ignored; "b" flipped success but kept its steps
+    assert agreement_with_recorded(rerun, recorded) == {"compared": 2, "same_success": 1, "same_steps": 2}
