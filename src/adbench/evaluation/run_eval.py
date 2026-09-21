@@ -204,6 +204,7 @@ def load_condition_model(
     experiment_config: dict[str, Any],
     models_config: dict[str, Any],
     use_fast_inference: bool | None = None,
+    checkpoint_dir: str | Path | None = None,
 ):
     """Load a condition's saved checkpoint (training/train.py::save_checkpoint)
     for inference. Every condition — including "base" — has a checkpoint to
@@ -228,7 +229,7 @@ def load_condition_model(
     """
     from unsloth import FastLanguageModel
 
-    checkpoint_dir = resolve_checkpoint_dir(experiment_config, condition)
+    checkpoint_dir = Path(checkpoint_dir) if checkpoint_dir else resolve_checkpoint_dir(experiment_config, condition)
     if not checkpoint_dir.exists():
         raise FileNotFoundError(
             f"No checkpoint for condition {condition!r} at {checkpoint_dir} — "
