@@ -135,11 +135,22 @@ def make_batch_generate_fn(model, tokenizer, max_new_tokens: int = 256):
     """(model, tokenizer) -> generate_batch(list of chat-message lists) -> list of
     completions. Prompts are left-padded; each completion is decoded up to and
     including its first end-of-turn token, exactly like the single-prompt path,
-    so padding after a short answer never leaks into the text."""
+    so padding after a short answer never leaks into the text.
+
+    The returned function records, per call, `stats` (batch size, seconds, tokens
+    generated per row, how many rows used the whole max_new_tokens budget) and keeps
+    the first few texts of rows that hit the budget in `capped_samples`. A batch only
+    ends when its slowest row does, so a single row that never emits its end-of-turn
+    token makes the whole batch run to max_new_tokens; these numbers show whether that
+    is what limits speed."""
     configure_greedy(model)
+    stats: list[dict[str, Any]] = []
+    capped_samples: list[str] = []
 
     def generate_batch(batch_messages: list[list[dict[str, Any]]]) -> list[str]:
         import torch
+
+        started = time.monotonic()
 
         prompts = [
             tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
@@ -165,6 +176,7 @@ def make_batch_generate_fn(model, tokenizer, max_new_tokens: int = 256):
             eos_ids.add(tokenizer.eos_token_id)
 
         completions = []
+        lengths = []
         for row in output_ids:
             new_tokens = row[prompt_len:].tolist()
             cut = len(new_tokens)
@@ -172,7 +184,20 @@ def make_batch_generate_fn(model, tokenizer, max_new_tokens: int = 256):
                 if token in eos_ids:
                     cut = i + 1
                     break
-            completions.append(tokenizer.decode(new_tokens[:cut]))
+            lengths.append(cut)
+            text = tokenizer.decode(new_tokens[:cut])
+            if cut >= max_new_tokens and len(capped_samples) < 5:
+                capped_samples.append(text[-600:])
+            completions.append(text)
+        stats.append({
+            "batch": len(batch_messages),
+            "seconds": round(time.monotonic() - started, 1),
+            "prompt_tokens": int(prompt_len),
+            "new_tokens": lengths,
+            "hit_budget": sum(n >= max_new_tokens for n in lengths),
+        })
         return completions
 
+    generate_batch.stats = stats
+    generate_batch.capped_samples = capped_samples
     return generate_batch
