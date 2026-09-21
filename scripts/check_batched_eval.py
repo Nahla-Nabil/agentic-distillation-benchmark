@@ -14,9 +14,15 @@ Exit status is 1 if success agreement falls below --min-agreement.
 """
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
+
+# Batched generation pads prompts, which makes Unsloth build an attention bias on the first GPU
+# while a model split over both T4s keeps later layers on the second one ("Expected all tensors
+# to be on the same device"). One GPU holds the 4-bit 4B model easily, so pin the run to it.
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 

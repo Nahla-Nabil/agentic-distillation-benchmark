@@ -197,3 +197,12 @@ def test_agreement_with_recorded_counts_matching_tasks_only():
     rerun = [_row("a", True, ["x", "y"]), _row("b", True, ["x"]), _row("d", True, ["q"])]
     # "d" has no recorded counterpart and is ignored; "b" flipped success but kept its steps
     assert agreement_with_recorded(rerun, recorded) == {"compared": 2, "same_success": 1, "same_steps": 2}
+
+
+def test_fast_inference_default_follows_the_environment(monkeypatch):
+    from adbench.evaluation.run_eval import fast_inference_default
+
+    monkeypatch.delenv("ADBENCH_FAST_INFERENCE", raising=False)
+    assert fast_inference_default() is True
+    monkeypatch.setenv("ADBENCH_FAST_INFERENCE", "0")
+    assert fast_inference_default() is False

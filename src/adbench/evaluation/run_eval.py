@@ -192,11 +192,18 @@ def run_perplexity_for_condition(model, tokenizer, experiment_config: dict[str, 
 # locally testable end-to-end; built from the tested functions above.
 # --------------------------------------------------------------------------
 
+def fast_inference_default() -> bool:
+    """Unsloth's fast-generation mode is on unless ADBENCH_FAST_INFERENCE=0 (a fallback
+    to plain transformers generation, slower, in case the fast path misbehaves with
+    padded batches)."""
+    return os.environ.get("ADBENCH_FAST_INFERENCE", "1") != "0"
+
+
 def load_condition_model(
     condition: str,
     experiment_config: dict[str, Any],
     models_config: dict[str, Any],
-    use_fast_inference: bool = True,
+    use_fast_inference: bool | None = None,
 ):
     """Load a condition's saved checkpoint (training/train.py::save_checkpoint)
     for inference. Every condition — including "base" — has a checkpoint to
@@ -233,6 +240,8 @@ def load_condition_model(
         max_seq_length=student_cfg["max_seq_length"],
         load_in_4bit=student_cfg["load_in_4bit"],
     )
+    if use_fast_inference is None:
+        use_fast_inference = fast_inference_default()
     if use_fast_inference:
         FastLanguageModel.for_inference(model)
     return model, tokenizer
