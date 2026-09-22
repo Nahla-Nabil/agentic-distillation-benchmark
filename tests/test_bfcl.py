@@ -127,6 +127,14 @@ def test_task_row_scores_a_well_formed_correct_call():
     }
 
 
+def test_task_row_tags_the_task_set_with_the_given_category():
+    ex = BFCLExample("multiple_0", "goal", [], {"f": {"x": [1]}})
+    raw = '<tool_call>{"name": "f", "arguments": {"x": 1}}</tool_call>'
+    row = task_row("distilled", ex, raw, category="multiple")
+    assert row["task_set"] == "bfcl_multiple"
+    assert task_row("distilled", ex, raw)["task_set"] == "bfcl_simple"   # default category
+
+
 def test_task_row_flags_a_malformed_call_without_crashing():
     ex = BFCLExample("simple_0", "goal", [], GT_SIMPLE0)
     row = task_row("base", ex, "<tool_call>{not: valid json}</tool_call>")
@@ -147,7 +155,11 @@ def test_run_bfcl_eval_sequential():
     rows = run_bfcl_eval("sft_only", script, examples)
     assert [r["task_id"] for r in rows] == ["simple_0", "simple_1"]
     assert [r["success"] for r in rows] == [True, False]
+    assert {r["task_set"] for r in rows} == {"bfcl_simple"}
     assert summarize_bfcl(rows) == {"sft_only": 0.5}
+
+    rows_multiple = run_bfcl_eval("sft_only", script, examples, category="multiple")
+    assert {r["task_set"] for r in rows_multiple} == {"bfcl_multiple"}
 
 
 def test_run_bfcl_eval_batched_keeps_input_order():

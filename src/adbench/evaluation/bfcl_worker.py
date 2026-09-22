@@ -10,7 +10,7 @@ slow condition — see notebooks/11_ext_eval.ipynb's job-list comment). Download
 checkpoint each job needs, evaluates it on a deterministic `--n`-example BFCL subset, and
 uploads a single result file:
 
-    runs/v2-seed<k>/results/stages/bfcl_eval_<condition>.json
+    runs/v2-seed<k>/results/stages/bfcl_eval_<category>_<condition>.json
 
 BFCL "simple" prompts are short single turns (no multi-step history to build up), so unlike
 ext_worker.py this does not need a larger --max-seq-length than configs/models.yaml's default.
@@ -32,8 +32,8 @@ from adbench.evaluation.worker_utils import parse_jobs, run_jobs, split_jobs  # 
 DEFAULT_REPO = "NahlaNabil/adbench-run"
 
 
-def result_path(seed: int, condition: str) -> str:
-    return f"runs/v2-seed{seed}/results/stages/bfcl_eval_{condition}.json"
+def result_path(seed: int, condition: str, category: str = "simple") -> str:
+    return f"runs/v2-seed{seed}/results/stages/bfcl_eval_{category}_{condition}.json"
 
 
 def describe_bfcl_result(rows: list[dict[str, Any]]) -> str:
@@ -79,7 +79,9 @@ def main() -> None:
     print(f"{len(examples)} examples loaded.")
 
     def already_done(seed: int, condition: str) -> bool:
-        return api.file_exists(repo_id=args.repo, filename=result_path(seed, condition), repo_type="model")
+        return api.file_exists(
+            repo_id=args.repo, filename=result_path(seed, condition, args.category), repo_type="model"
+        )
 
     def evaluate(seed: int, condition: str) -> list[dict[str, Any]]:
         tag = f"v2-seed{seed}"
@@ -94,7 +96,7 @@ def main() -> None:
         )
         model_fn = build_model_fn(model, tokenizer, experiment_config)
         try:
-            return run_bfcl_eval(condition, model_fn, examples)
+            return run_bfcl_eval(condition, model_fn, examples, category=args.category)
         finally:
             if isinstance(model_fn, BatchedModelFn):
                 model_fn.close()
@@ -109,13 +111,14 @@ def main() -> None:
             shutil.rmtree(work_dir / "dl", ignore_errors=True)
 
     def save(seed: int, condition: str, rows: list[dict[str, Any]]) -> None:
-        local = out_dir / f"seed{seed}_{condition}.json"
+        local = out_dir / f"{args.category}_seed{seed}_{condition}.json"
         local.write_text(json.dumps(rows), encoding="utf-8")
         for attempt in range(1, 4):
             try:
                 api.upload_file(
-                    path_or_fileobj=str(local), path_in_repo=result_path(seed, condition),
-                    repo_id=args.repo, repo_type="model", commit_message=f"bfcl eval seed {seed} {condition}",
+                    path_or_fileobj=str(local), path_in_repo=result_path(seed, condition, args.category),
+                    repo_id=args.repo, repo_type="model",
+                    commit_message=f"bfcl {args.category} eval seed {seed} {condition}",
                 )
                 return
             except Exception as e:  # noqa: BLE001 — two workers may commit at the same moment

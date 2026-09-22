@@ -6,7 +6,8 @@ from adbench.evaluation.bfcl_worker import describe_bfcl_result, parse_jobs, res
 
 
 def test_result_path_matches_the_tag_layout_used_by_the_pipeline():
-    assert result_path(3, "distilled") == "runs/v2-seed3/results/stages/bfcl_eval_distilled.json"
+    assert result_path(3, "distilled") == "runs/v2-seed3/results/stages/bfcl_eval_simple_distilled.json"
+    assert result_path(3, "distilled", "multiple") == "runs/v2-seed3/results/stages/bfcl_eval_multiple_distilled.json"
 
 
 def test_describe_bfcl_result():

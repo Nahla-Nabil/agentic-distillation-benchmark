@@ -32,7 +32,7 @@ from adbench.harness.executor import FinalAnswer, ModelFn, ToolCall, _values_mat
 
 BFCL_REPO = "gorilla-llm/Berkeley-Function-Calling-Leaderboard"
 BFCL_CATEGORY = "simple"
-TASK_SET = "bfcl_simple"
+TASK_SET_PREFIX = "bfcl_"
 
 
 @dataclass(frozen=True)
@@ -163,10 +163,14 @@ def check_bfcl_call(call: ToolCall | FinalAnswer, ground_truth: dict[str, dict[s
     return True
 
 
-def task_row(condition: str, example: BFCLExample, raw_output: str) -> dict[str, Any]:
+def task_row(
+    condition: str, example: BFCLExample, raw_output: str, category: str = BFCL_CATEGORY
+) -> dict[str, Any]:
     """One example's result as a metrics.py-style row (same field shapes as
     evaluation/metrics.py's rows, so it can sit in the same eval_results.jsonl if wanted).
-    `error_type` is set only when the model's raw text wasn't even a well-formed tool call."""
+    `task_set` is "bfcl_<category>" (e.g. "bfcl_simple", "bfcl_multiple") so rows from different
+    BFCL categories never get pooled together by accident. `error_type` is set only when the
+    model's raw text wasn't even a well-formed tool call."""
     error_type = None
     try:
         parsed = parse_model_output(raw_output)
@@ -176,7 +180,7 @@ def task_row(condition: str, example: BFCLExample, raw_output: str) -> dict[str,
     success = check_bfcl_call(parsed, example.ground_truth)
     return {
         "condition": condition,
-        "task_set": TASK_SET,
+        "task_set": f"{TASK_SET_PREFIX}{category}",
         "task_id": example.example_id,
         "success": success,
         "tool_name": parsed.name if isinstance(parsed, ToolCall) else None,
@@ -184,16 +188,18 @@ def task_row(condition: str, example: BFCLExample, raw_output: str) -> dict[str,
     }
 
 
-def run_bfcl_eval(condition: str, model_fn: ModelFn, examples: list[BFCLExample]) -> list[dict[str, Any]]:
-    """Single call per example — BFCL "simple" is one-shot, not a multi-step chain, so this
-    does not go through harness.executor.run_task. Runs concurrently if `model_fn` is a
+def run_bfcl_eval(
+    condition: str, model_fn: ModelFn, examples: list[BFCLExample], category: str = BFCL_CATEGORY
+) -> list[dict[str, Any]]:
+    """Single call per example — BFCL "simple"/"multiple" are one-shot, not a multi-step chain,
+    so this does not go through harness.executor.run_task. Runs concurrently if `model_fn` is a
     BatchedModelFn (see evaluation.batching), same convention as
     evaluation.run_eval.run_harness_eval_for_condition."""
     if isinstance(model_fn, BatchedModelFn):
         outputs = model_fn.run_concurrently(lambda ex: model_fn(build_bfcl_prompt(ex)), examples)
     else:
         outputs = [model_fn(build_bfcl_prompt(ex)) for ex in examples]
-    return [task_row(condition, ex, raw) for ex, raw in zip(examples, outputs, strict=True)]
+    return [task_row(condition, ex, raw, category) for ex, raw in zip(examples, outputs, strict=True)]
 
 
 def summarize_bfcl(rows: list[dict[str, Any]]) -> dict[str, float]:
