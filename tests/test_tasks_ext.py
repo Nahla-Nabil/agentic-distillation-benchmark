@@ -206,3 +206,52 @@ def test_fast_inference_default_follows_the_environment(monkeypatch):
     assert fast_inference_default() is True
     monkeypatch.setenv("ADBENCH_FAST_INFERENCE", "0")
     assert fast_inference_default() is False
+
+
+# ---- load_condition_model's max_seq_length override (stubbed unsloth, no GPU) --------------
+
+def _stub_unsloth(monkeypatch, calls):
+    import types
+
+    fake = types.ModuleType("unsloth")
+
+    class FastLanguageModel:
+        @staticmethod
+        def from_pretrained(**kwargs):
+            calls.append(kwargs)
+            return object(), object()
+
+        @staticmethod
+        def for_inference(model):
+            pass
+
+    fake.FastLanguageModel = FastLanguageModel
+    monkeypatch.setitem(__import__("sys").modules, "unsloth", fake)
+
+
+def test_load_condition_model_defaults_to_the_configured_context_window(monkeypatch, tmp_path):
+    from adbench.evaluation.run_eval import load_condition_model
+
+    calls = []
+    _stub_unsloth(monkeypatch, calls)
+    checkpoint = tmp_path / "ckpt"
+    checkpoint.mkdir()
+    load_condition_model(
+        "base", {"conditions": []}, {"student": {"max_seq_length": 2048, "load_in_4bit": True}},
+        checkpoint_dir=checkpoint,
+    )
+    assert calls[0]["max_seq_length"] == 2048
+
+
+def test_load_condition_model_max_seq_length_overrides_the_config(monkeypatch, tmp_path):
+    from adbench.evaluation.run_eval import load_condition_model
+
+    calls = []
+    _stub_unsloth(monkeypatch, calls)
+    checkpoint = tmp_path / "ckpt"
+    checkpoint.mkdir()
+    load_condition_model(
+        "distilled", {"conditions": []}, {"student": {"max_seq_length": 2048, "load_in_4bit": True}},
+        checkpoint_dir=checkpoint, max_seq_length=4096,
+    )
+    assert calls[0]["max_seq_length"] == 4096

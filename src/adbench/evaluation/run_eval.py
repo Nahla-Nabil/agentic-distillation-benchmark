@@ -205,6 +205,7 @@ def load_condition_model(
     models_config: dict[str, Any],
     use_fast_inference: bool | None = None,
     checkpoint_dir: str | Path | None = None,
+    max_seq_length: int | None = None,
 ):
     """Load a condition's saved checkpoint (training/train.py::save_checkpoint)
     for inference. Every condition — including "base" — has a checkpoint to
@@ -226,6 +227,16 @@ def load_condition_model(
     those hooks firing, so it does NOT use this function at all — see
     layer_analysis.load_student_checkpoint_for_extraction(), which loads
     via plain transformers + peft (no Unsloth) instead.
+
+    `max_seq_length` overrides models.yaml's student.max_seq_length (2048) —
+    that value was sized for training on single-step Glaive examples and the
+    121-task primary eval set, both well under it. It is too small for the
+    extended eval's 12-tool system prompt plus a 5-step conversation history,
+    which can exceed 2048 tokens and otherwise crashes generate() with a
+    shape mismatch between the attention mask and the (silently truncated)
+    input (see evaluation/ext_worker.py, which passes a larger value). This
+    only changes the context window Unsloth allocates for loading/inference —
+    it does not touch the trained adapter weights.
     """
     from unsloth import FastLanguageModel
 
@@ -238,7 +249,7 @@ def load_condition_model(
     student_cfg = models_config["student"]
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=str(checkpoint_dir),
-        max_seq_length=student_cfg["max_seq_length"],
+        max_seq_length=max_seq_length or student_cfg["max_seq_length"],
         load_in_4bit=student_cfg["load_in_4bit"],
     )
     if use_fast_inference is None:

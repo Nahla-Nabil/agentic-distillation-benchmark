@@ -13,6 +13,12 @@ A job whose result file already exists on Hugging Face is skipped, so re-running
 resumes where it stopped. `--max-minutes` stops the worker from starting new jobs after that long,
 which protects the weekly GPU quota; finished jobs stay saved.
 
+The extended set's 12-tool system prompt plus a 5-step conversation history can exceed the 2048
+tokens the checkpoints were trained/originally evaluated with (a "distilled" condition, whose
+answers run longer, hit this first: shape [8, 2113] > 2048, then a mask-size crash). Loading the
+model here uses `--max-seq-length` (default 4096), not the value in configs/models.yaml, so this
+only widens the context window at load time — it never touches the trained adapter weights.
+
 Needs HF_TOKEN (write access to ADBENCH_HF_REPO) in the environment.
 """
 
@@ -94,12 +100,19 @@ def main() -> None:
     parser.add_argument("--repo", default=os.environ.get("ADBENCH_HF_REPO", DEFAULT_REPO))
     parser.add_argument("--experiment-config", default="configs/experiment.yaml")
     parser.add_argument("--models-config", default="configs/models.yaml")
+    parser.add_argument(
+        "--max-seq-length", type=int, default=4096,
+        help="Context window to load the model with (see load_condition_model's docstring): "
+             "the extended set's 12-tool prompt + a 5-step history can exceed the 2048 the "
+             "checkpoints were trained/originally evaluated with.",
+    )
+    parser.add_argument("--eval-batch", type=int, default=8)
     args = parser.parse_args()
 
     token = os.environ.get("HF_TOKEN")
     if not token:
         raise SystemExit("HF_TOKEN is not set; a worker needs it to read checkpoints and upload results.")
-    os.environ.setdefault("ADBENCH_EVAL_BATCH", "16")
+    os.environ.setdefault("ADBENCH_EVAL_BATCH", str(args.eval_batch))
     os.environ["ADBENCH_STORE_TRANSCRIPTS"] = "1"
 
     from huggingface_hub import HfApi, snapshot_download
@@ -131,7 +144,8 @@ def main() -> None:
         )
         checkpoint = work_dir / "dl" / "runs" / tag / "checkpoints" / condition
         model, tokenizer = load_condition_model(
-            condition, experiment_config, models_config, checkpoint_dir=checkpoint
+            condition, experiment_config, models_config, checkpoint_dir=checkpoint,
+            max_seq_length=args.max_seq_length,
         )
         model_fn = build_model_fn(model, tokenizer, experiment_config)
         try:
