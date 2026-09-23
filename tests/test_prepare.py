@@ -261,3 +261,52 @@ def test_every_selected_tool_is_actually_callable_with_its_canonical_args(tool_n
     registry = build_glaive_registry()
     result = registry.call(tool_name, args)
     assert isinstance(result, dict)
+
+
+# --------------------------------------------------------------------------
+# Tool-diversity ablation (--n-tools): select_top_n_tools, ablation_paths
+# --------------------------------------------------------------------------
+
+from adbench.data.prepare import ablation_paths, select_top_n_tools  # noqa: E402
+
+
+def test_select_top_n_tools_picks_the_most_available_ones():
+    canonical = {"a": (), "b": (), "c": (), "d": ()}
+    kept = {"a": 10, "b": 50, "c": 30, "d": 5}
+    assert select_top_n_tools(kept, canonical, 2) == ["b", "c"]
+    assert select_top_n_tools(kept, canonical, 4) == ["b", "c", "a", "d"]
+
+
+def test_select_top_n_tools_breaks_ties_alphabetically_for_determinism():
+    canonical = {"z": (), "a": (), "m": ()}
+    kept = {"z": 10, "a": 10, "m": 10}
+    assert select_top_n_tools(kept, canonical, 2) == ["a", "m"]
+
+
+def test_select_top_n_tools_missing_from_kept_counts_as_zero():
+    canonical = {"a": (), "b": ()}
+    assert select_top_n_tools({"a": 5}, canonical, 1) == ["a"]
+
+
+def test_select_top_n_tools_rejects_n_larger_than_available():
+    with pytest.raises(ValueError):
+        select_top_n_tools({}, {"a": (), "b": ()}, 3)
+
+
+def test_ablation_paths_never_collide_with_the_default_split(tmp_path):
+    config = {
+        "output": {
+            "train_path": "data/splits/train.jsonl",
+            "test_path": "data/splits/test.jsonl",
+            "stats_path": "data/splits/prepare_stats.json",
+        }
+    }
+    paths = ablation_paths(config, 4)
+    assert paths["train_path"].name == "train_ntools4.jsonl"
+    assert paths["test_path"].name == "test_ntools4.jsonl"
+    assert paths["stats_path"].name == "prepare_stats_ntools4.json"
+    # different n_tools values are also mutually distinct
+    assert ablation_paths(config, 2)["train_path"] != paths["train_path"]
+    default_train = REPO_ROOT / config["output"]["train_path"]
+    assert paths["train_path"] != default_train
+    assert paths["train_path"].parent == default_train.parent

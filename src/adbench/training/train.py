@@ -596,14 +596,24 @@ def train_condition(
     models_config: dict[str, Any],
     sweep_name: str | None = None,
     glaive_train_path: str | Path | None = None,
+    checkpoint_dir_override: str | Path | None = None,
 ) -> dict[str, Any]:
     """Run one condition end to end: load model(s), (for sft_only/distilled)
     train on the glaive train split, save the checkpoint. Returns a small
-    summary dict. See module docstring — needs Colab (Unsloth + GPU)."""
+    summary dict. See module docstring — needs Colab (Unsloth + GPU).
+
+    `checkpoint_dir_override` writes the checkpoint somewhere other than
+    configs/experiment.yaml's default per-condition path — used by the
+    tool-diversity ablation (evaluation/ablation_worker.py) so an ablation
+    run's checkpoints never collide with the main pipeline's."""
     from adbench.data.prepare import read_jsonl
     from adbench.harness.tools import build_glaive_registry
 
     cfg = resolve_training_config(experiment_config, condition, sweep_name)
+    if checkpoint_dir_override is not None:
+        from dataclasses import replace
+
+        cfg = replace(cfg, checkpoint_dir=Path(checkpoint_dir_override))
     student, tokenizer = load_student(models_config, seed=cfg.seed)
 
     if condition == "base":

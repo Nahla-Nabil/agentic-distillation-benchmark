@@ -652,3 +652,28 @@ def test_adbench_seed_env_overrides_only_the_seed(monkeypatch):
     seeded = resolve_training_config(config, "distilled")
     assert seeded.seed == 7 and default.seed == config["training"]["seed"]
     assert seeded.kd == default.kd and seeded.learning_rate == default.learning_rate
+
+
+# --------------------------------------------------------------------------
+# checkpoint_dir_override (tool-diversity ablation: evaluation/ablation_worker.py
+# uses this so an ablation run's checkpoints never collide with the main
+# pipeline's default per-condition path)
+# --------------------------------------------------------------------------
+
+def test_checkpoint_dir_override_replaces_only_that_field():
+    """train_condition() applies this exact dataclasses.replace() to the resolved config
+    before loading any model — tested at that level since train_condition itself needs
+    Unsloth/a GPU (see the module docstring)."""
+    from dataclasses import replace
+    from pathlib import Path
+
+    config = load_experiment_config(REAL_EXPERIMENT_CONFIG_PATH)
+    cfg = resolve_training_config(config, "sft_only")
+    override_dir = Path("/tmp/ablation/n4/sft_only")
+
+    overridden = replace(cfg, checkpoint_dir=override_dir)
+
+    assert overridden.checkpoint_dir == override_dir
+    assert overridden.checkpoint_dir != cfg.checkpoint_dir
+    for field in ("condition", "seed", "learning_rate", "num_train_epochs", "kd", "teacher_key"):
+        assert getattr(overridden, field) == getattr(cfg, field)

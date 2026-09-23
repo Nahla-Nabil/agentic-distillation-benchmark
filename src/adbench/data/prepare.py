@@ -4,6 +4,12 @@ used across all three conditions, and freeze its 80/20 train/test split.
 Run once, locally (CPU-only, no GPU needed):
     python -m adbench.data.prepare --config configs/data.yaml
 
+Tool-diversity ablation: `--n-tools N` builds a SEPARATE split (train_ntoolsN.jsonl etc., never
+the default train.jsonl) using only the N most-available of the 8 curated tools, with the
+per-tool cap scaled so the TOTAL example count stays 800 regardless of N — isolating "how many
+distinct tools the training data covers" as the manipulated variable, holding data quantity
+fixed. See select_top_n_tools()/ablation_paths().
+
 Pipeline (see configs/data.yaml's header comment for the "why" behind each
 of these, discovered by inspecting the raw dataset):
   1. Download the raw dataset (network + `datasets`, only in main()/CLI use —
@@ -186,6 +192,29 @@ def balance_and_split(
     return train, test
 
 
+def select_top_n_tools(per_tool_kept: dict[str, int], canonical: dict[str, tuple[str, ...]], n: int) -> list[str]:
+    """The n most-available of configs/data.yaml's already-curated tools (by kept-example
+    count, ties broken alphabetically for determinism), for the tool-diversity ablation
+    (--n-tools). Restricting to this pre-selected pool — never picking some OTHER frequent raw
+    tool name instead — keeps every ablation condition using tools the harness can actually mock
+    (harness.tools.build_glaive_registry() only implements these 8); it only changes how many of
+    them training data is drawn from, not which universe of tools is eligible."""
+    if n > len(canonical):
+        raise ValueError(f"n_tools={n} exceeds the {len(canonical)} curated tools available.")
+    return sorted(canonical, key=lambda name: (-per_tool_kept.get(name, 0), name))[:n]
+
+
+def ablation_paths(config: dict[str, Any], n_tools: int) -> dict[str, Path]:
+    """Where an --n-tools run's train/test/stats files go — always a DIFFERENT path from the
+    default (config["output"][...]), so an ablation run can never overwrite the main split, and
+    each n_tools value gets its own frozen files (train_ntools4.jsonl, not train.jsonl)."""
+    out = {}
+    for key in ("train_path", "test_path", "stats_path"):
+        path = _resolve(config["output"][key])
+        out[key] = path.with_name(f"{path.stem}_ntools{n_tools}{path.suffix}")
+    return out
+
+
 def write_jsonl(records: list[dict[str, Any]], path: str | Path) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -215,12 +244,22 @@ def main() -> None:
         "--max-rows", type=int, default=None,
         help="Process only the first N raw rows (for a fast local dry run).",
     )
+    parser.add_argument(
+        "--n-tools", type=int, default=None,
+        help="Tool-diversity ablation: build a split using only the N most-available of the "
+             "curated tools (per-tool cap scaled so the TOTAL example count stays the same as "
+             "the default run), written to separate _ntoolsN files — never the default split.",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
-    train_path = _resolve(config["output"]["train_path"])
-    test_path = _resolve(config["output"]["test_path"])
-    stats_path = _resolve(config["output"]["stats_path"])
+    if args.n_tools is not None:
+        paths = ablation_paths(config, args.n_tools)
+        train_path, test_path, stats_path = paths["train_path"], paths["test_path"], paths["stats_path"]
+    else:
+        train_path = _resolve(config["output"]["train_path"])
+        test_path = _resolve(config["output"]["test_path"])
+        stats_path = _resolve(config["output"]["stats_path"])
 
     if not args.force and (train_path.exists() or test_path.exists()):
         raise SystemExit(
@@ -263,7 +302,20 @@ def main() -> None:
             print(f"  ...{i}/{len(ds)}")
 
     per_tool_kept = Counter(r["expected_tool_sequence"][0] for r in kept_records)
-    per_tool_target = config["subset"]["per_tool_target"]
+    default_per_tool_target = config["subset"]["per_tool_target"]
+
+    selected_tools = None
+    if args.n_tools is not None:
+        selected_tools = select_top_n_tools(per_tool_kept, canonical, args.n_tools)
+        kept_records = [r for r in kept_records if r["expected_tool_sequence"][0] in selected_tools]
+        # Hold the TOTAL example count constant across n_tools (the ablation's whole point is
+        # varying tool diversity, not data quantity) by scaling the per-tool cap inversely.
+        total_target = default_per_tool_target * len(canonical)
+        per_tool_target = total_target // args.n_tools
+        print(f"--n-tools {args.n_tools}: using {selected_tools} (per-tool target {per_tool_target})")
+    else:
+        per_tool_target = default_per_tool_target
+
     train_records, test_records = balance_and_split(
         kept_records,
         per_tool_target=per_tool_target,
@@ -286,11 +338,12 @@ def main() -> None:
         "drop_reasons": dict(drop_reason_counter),
         "distinct_tool_names_in_raw_data": len(all_tool_name_counter),
         "top_40_tool_names_by_frequency": all_tool_name_counter.most_common(40),
-        "selected_tools": sorted(canonical),
+        "selected_tools": sorted(selected_tools) if selected_tools else sorted(canonical),
         "kept_examples_per_selected_tool_before_capping": {
             name: per_tool_kept.get(name, 0) for name in sorted(canonical)
         },
         "per_tool_target": per_tool_target,
+        "n_tools": args.n_tools,
         "n_train": len(train_records),
         "n_test": len(test_records),
         "n_total": total,
