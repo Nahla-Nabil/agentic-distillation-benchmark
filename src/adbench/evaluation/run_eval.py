@@ -206,6 +206,7 @@ def load_condition_model(
     use_fast_inference: bool | None = None,
     checkpoint_dir: str | Path | None = None,
     max_seq_length: int | None = None,
+    student_key: str = "student",
 ):
     """Load a condition's saved checkpoint (training/train.py::save_checkpoint)
     for inference. Every condition — including "base" — has a checkpoint to
@@ -228,6 +229,12 @@ def load_condition_model(
     layer_analysis.load_student_checkpoint_for_extraction(), which loads
     via plain transformers + peft (no Unsloth) instead.
 
+    `student_key` selects which configs/models.yaml entry the checkpoint was
+    trained from — "student" (main pair, 4B) unless overridden, e.g.
+    "student_small" for the second model pair (evaluation/second_pair_worker.py) —
+    needed so max_seq_length/load_in_4bit below match the checkpoint's actual
+    base model, not always the main pair's.
+
     `max_seq_length` overrides models.yaml's student.max_seq_length (2048) —
     that value was sized for training on single-step Glaive examples and the
     121-task primary eval set, both well under it. It is too small for the
@@ -246,7 +253,7 @@ def load_condition_model(
             f"No checkpoint for condition {condition!r} at {checkpoint_dir} — "
             "run `python -m adbench.training.train --condition ...` first."
         )
-    student_cfg = models_config["student"]
+    student_cfg = models_config[student_key]
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=str(checkpoint_dir),
         max_seq_length=max_seq_length or student_cfg["max_seq_length"],

@@ -677,3 +677,74 @@ def test_checkpoint_dir_override_replaces_only_that_field():
     assert overridden.checkpoint_dir != cfg.checkpoint_dir
     for field in ("condition", "seed", "learning_rate", "num_train_epochs", "kd", "teacher_key"):
         assert getattr(overridden, field) == getattr(cfg, field)
+
+
+# --------------------------------------------------------------------------
+# Second model pair: self_distill_small condition + student_key plumbing
+# --------------------------------------------------------------------------
+
+def test_self_distill_small_is_a_control_condition_pointed_at_its_own_student():
+    config = load_experiment_config(REAL_EXPERIMENT_CONFIG_PATH)
+    cfg = resolve_training_config(config, "self_distill_small")
+    assert cfg.teacher_key == "teacher_self_small"
+    assert cfg.kd.kd_weight > 0
+
+
+def test_self_distill_small_shares_hyperparameters_with_self_distill():
+    """Should differ from the main pair's self_distill ONLY in which teacher key it names —
+    same discipline as sft_only vs distilled (test_resolve_training_config_shares_non_kd_hyperparameters)."""
+    config = load_experiment_config(REAL_EXPERIMENT_CONFIG_PATH)
+    main_cfg = resolve_training_config(config, "self_distill")
+    small_cfg = resolve_training_config(config, "self_distill_small")
+    assert small_cfg.teacher_key != main_cfg.teacher_key
+    for field in ("learning_rate", "num_train_epochs", "per_device_train_batch_size",
+                  "gradient_accumulation_steps", "kd"):
+        assert getattr(small_cfg, field) == getattr(main_cfg, field)
+
+
+def test_second_pair_models_config_entries_exist_and_are_distinct_from_the_main_pair():
+    models_config = load_experiment_config(REPO_ROOT / "configs" / "models.yaml")
+    assert models_config["student_small"]["hf_id"] == "Qwen/Qwen3-1.7B"
+    assert models_config["teacher_self_small"]["hf_id"] == "Qwen/Qwen3-1.7B"
+    assert models_config["student_small"]["hf_id"] != models_config["student"]["hf_id"]
+    assert models_config["teacher_self_small"]["hf_id"] != models_config["teacher_self"]["hf_id"]
+    # teacher_8b is REUSED as-is for the second pair (see self_distill_small's docstring/config)
+    assert "teacher_8b" in models_config
+
+
+def test_every_second_pair_condition_has_a_teacher_or_no_teacher_as_expected():
+    config = load_experiment_config(REAL_EXPERIMENT_CONFIG_PATH)
+    assert resolve_training_config(config, "base").kd.kd_weight == 0.0
+    assert resolve_training_config(config, "sft_only").kd.kd_weight == 0.0
+    assert resolve_training_config(config, "distilled_8b").teacher_key == "teacher_8b"
+
+
+def test_load_student_default_key_unchanged_and_override_selects_small(monkeypatch, tmp_path):
+    """load_student(student_key=...) selects the configs/models.yaml entry to load, defaulting
+    to "student" so every existing caller is unaffected."""
+    import types
+
+    calls = []
+
+    class FastLanguageModel:
+        @staticmethod
+        def from_pretrained(**kwargs):
+            calls.append(kwargs)
+            return object(), object()
+
+        @staticmethod
+        def get_peft_model(model, **kwargs):
+            return model
+
+    fake = types.ModuleType("unsloth")
+    fake.FastLanguageModel = FastLanguageModel
+    monkeypatch.setitem(__import__("sys").modules, "unsloth", fake)
+
+    from adbench.training.train import load_student
+
+    models_config = load_experiment_config(REPO_ROOT / "configs" / "models.yaml")
+    load_student(models_config)
+    assert calls[-1]["model_name"] == models_config["student"]["hf_id"]
+
+    load_student(models_config, student_key="student_small")
+    assert calls[-1]["model_name"] == models_config["student_small"]["hf_id"]

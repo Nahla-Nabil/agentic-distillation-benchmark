@@ -39,6 +39,41 @@ teacher_self:
   load_in_4bit: true
   max_seq_length: 2048
 
+# Second model pair (README/paper's "does the finding generalise beyond one model
+# size?" check) — student_small + the existing teacher_8b, ~4.7x apart (vs the
+# main pair's ~3.5x), and teacher_self_small for that pair's own self-distill
+# control (must be the SMALL student's own base, not teacher_self above, which is
+# the main pair's 4B student — self-distillation only makes sense against a
+# model's own un-fine-tuned self).
+#
+# Tokenizer compatibility VERIFIED 2026-09 (scripts/verify_tokenizer_compatibility.py
+# Qwen/Qwen3-8B vs Qwen/Qwen3-1.7B): identical Qwen2Tokenizer, vocab_size=151643
+# (len=151669), matching special tokens, and matching token-id sequences across
+# code/JSON/CJK samples — same guarantee as the main pair, logit-level KD is safe.
+teacher_self_small:
+  hf_id: Qwen/Qwen3-1.7B
+  role: teacher
+  load_in_4bit: true
+  max_seq_length: 2048
+
+student_small:
+  hf_id: Qwen/Qwen3-1.7B
+  role: student
+  load_in_4bit: true
+  max_seq_length: 2048
+  lora:
+    r: 16
+    alpha: 16
+    dropout: 0.0
+    target_modules:
+      - q_proj
+      - k_proj
+      - v_proj
+      - o_proj
+      - gate_proj
+      - up_proj
+      - down_proj
+
 student:
   hf_id: Qwen/Qwen3-4B-Instruct-2507
   role: student
@@ -67,6 +102,8 @@ student:
 # downloaded) 2026-09:
 #   Qwen3-14B:               num_hidden_layers=40, hidden_size=5120
 #   Qwen3-4B-Instruct-2507:  num_hidden_layers=36, hidden_size=2560
+#   Qwen3-8B (teacher_8b):   num_hidden_layers=36, hidden_size=4096
+#   Qwen3-1.7B (student_small): num_hidden_layers=28, hidden_size=2048
 # Both depth AND width differ, which is why cosine distance can't be taken
 # directly between raw activation vectors (5120-dim vs 2560-dim) — see
 # analysis/layer_analysis.py's module docstring for how it's handled instead.

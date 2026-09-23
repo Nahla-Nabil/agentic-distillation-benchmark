@@ -55,6 +55,18 @@ conditions:
     loss: kd
     teacher: teacher_8b
 
+  # ---- Second model pair (does the finding generalise beyond one model size?) ----
+  # Reuses "base"/"sft_only"/"distilled_8b" above as-is (student_small + teacher_8b
+  # passed explicitly, see evaluation/second_pair_worker.py) — this condition exists
+  # only because self-distillation needs a teacher pointed at student_small's OWN
+  # base model (teacher_self above is the MAIN pair's 4B student, wrong for this
+  # pair). checkpoint: is a harmless default; second_pair_worker.py always overrides it.
+  - id: self_distill_small
+    label: "KD from the frozen small student itself, second model pair"
+    checkpoint: checkpoints/self_distill_small/
+    loss: kd
+    teacher: teacher_self_small
+
 # Training hyperparameters — named here, not hardcoded in train.py, so
 # they're easy to read, change, and sweep without touching code.
 #

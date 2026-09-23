@@ -255,3 +255,22 @@ def test_load_condition_model_max_seq_length_overrides_the_config(monkeypatch, t
         checkpoint_dir=checkpoint, max_seq_length=4096,
     )
     assert calls[0]["max_seq_length"] == 4096
+
+
+def test_load_condition_model_student_key_selects_the_right_config_entry(monkeypatch, tmp_path):
+    from adbench.evaluation.run_eval import load_condition_model
+
+    calls = []
+    _stub_unsloth(monkeypatch, calls)
+    checkpoint = tmp_path / "ckpt"
+    checkpoint.mkdir()
+    models_config = {
+        "student": {"max_seq_length": 2048, "load_in_4bit": True},
+        "student_small": {"max_seq_length": 4096, "load_in_4bit": True},
+    }
+    load_condition_model("base", {"conditions": []}, models_config, checkpoint_dir=checkpoint)
+    assert calls[-1]["max_seq_length"] == 2048
+    load_condition_model(
+        "base", {"conditions": []}, models_config, checkpoint_dir=checkpoint, student_key="student_small"
+    )
+    assert calls[-1]["max_seq_length"] == 4096

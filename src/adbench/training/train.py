@@ -49,8 +49,10 @@ CONDITIONS = ("base", "sft_only", "distilled")  # the original three-way compari
 #   sft_ls       SFT with label smoothing
 #   self_distill same KD loss, but the teacher is the frozen base student itself
 #   distilled_8b same KD loss with a mid-size external teacher (Qwen3-8B)
+#   self_distill_small self_distill's counterpart for the second model pair (see
+#     evaluation/second_pair_worker.py) — teacher is student_small's own frozen base
 # Each is defined by its entry in configs/experiment.yaml's `conditions`.
-CONTROL_CONDITIONS = ("sft_early", "sft_ls", "self_distill", "distilled_8b")
+CONTROL_CONDITIONS = ("sft_early", "sft_ls", "self_distill", "distilled_8b", "self_distill_small")
 ALL_CONDITIONS = CONDITIONS + CONTROL_CONDITIONS
 
 # Legacy loss kind for the three original conditions when their config entry has no `loss:` key.
@@ -395,12 +397,16 @@ def write_loss_log(entries: list[dict[str, Any]], path: str | Path) -> None:
 # testable end-to-end; built from the tested pieces above.
 # --------------------------------------------------------------------------
 
-def load_student(models_config: dict[str, Any], seed: int | None = None):
+def load_student(models_config: dict[str, Any], seed: int | None = None, student_key: str = "student"):
     """Load the student model + tokenizer via Unsloth, wrapped with the LoRA
-    config from configs/models.yaml. Returns (model, tokenizer)."""
+    config from configs/models.yaml. Returns (model, tokenizer).
+
+    `student_key` selects which configs/models.yaml entry to load — "student"
+    (the main pair's 4B) unless overridden, e.g. "student_small" for the second
+    model pair (see evaluation/second_pair_worker.py)."""
     from unsloth import FastLanguageModel
 
-    student_cfg = models_config["student"]
+    student_cfg = models_config[student_key]
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=student_cfg["hf_id"],
         max_seq_length=student_cfg["max_seq_length"],
@@ -597,6 +603,7 @@ def train_condition(
     sweep_name: str | None = None,
     glaive_train_path: str | Path | None = None,
     checkpoint_dir_override: str | Path | None = None,
+    student_key: str = "student",
 ) -> dict[str, Any]:
     """Run one condition end to end: load model(s), (for sft_only/distilled)
     train on the glaive train split, save the checkpoint. Returns a small
@@ -605,7 +612,11 @@ def train_condition(
     `checkpoint_dir_override` writes the checkpoint somewhere other than
     configs/experiment.yaml's default per-condition path — used by the
     tool-diversity ablation (evaluation/ablation_worker.py) so an ablation
-    run's checkpoints never collide with the main pipeline's."""
+    run's checkpoints never collide with the main pipeline's.
+
+    `student_key` selects configs/models.yaml's student entry — "student"
+    (main pair, 4B) unless overridden, e.g. "student_small" for the second
+    model pair (evaluation/second_pair_worker.py)."""
     from adbench.data.prepare import read_jsonl
     from adbench.harness.tools import build_glaive_registry
 
@@ -614,7 +625,7 @@ def train_condition(
         from dataclasses import replace
 
         cfg = replace(cfg, checkpoint_dir=Path(checkpoint_dir_override))
-    student, tokenizer = load_student(models_config, seed=cfg.seed)
+    student, tokenizer = load_student(models_config, seed=cfg.seed, student_key=student_key)
 
     if condition == "base":
         save_checkpoint(student, tokenizer, cfg.checkpoint_dir)
