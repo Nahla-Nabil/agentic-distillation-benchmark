@@ -13,7 +13,13 @@ from adbench.evaluation.second_pair_worker import (
 
 
 def test_result_path_matches_the_tag_layout_used_by_the_pipeline():
-    assert result_path(2, "distilled_8b") == "runs/v2-seed2/results/stages/pair2_distilled_8b.json"
+    assert result_path(2, "sft_only") == "runs/v2-seed2/results/stages/pair2_sft_only.json"
+    assert result_path(0, "base") == "runs/v2-seed0/results/stages/pair2_base.json"
+
+
+def test_teacher_conditions_use_a_new_prefix_so_the_first_runs_files_are_not_reused():
+    assert result_path(2, "distilled_8b") == "runs/v2-seed2/results/stages/pair2b_distilled_8b.json"
+    assert result_path(0, "self_distill_small") == "runs/v2-seed0/results/stages/pair2b_self_distill_small.json"
 
 
 def test_describe_pair2_result():

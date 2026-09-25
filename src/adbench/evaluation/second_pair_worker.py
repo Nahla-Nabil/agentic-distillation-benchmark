@@ -19,7 +19,8 @@ ext_worker.py/bfcl_worker.py (two workers, resumable, per-worker time budget) â€
 reused from worker_utils.py. Checkpoints are trained locally and deleted after eval, not
 uploaded (deterministic seed makes them cheap to reproduce). Uploads:
 
-    runs/v2-seed<k>/results/stages/pair2_<condition>.json
+    runs/v2-seed<k>/results/stages/pair2_<condition>.json   (base, sft_only)
+    runs/v2-seed<k>/results/stages/pair2b_<condition>.json  (teacher conditions; see result_path)
 
 Needs HF_TOKEN (write access to ADBENCH_HF_REPO) in the environment.
 """
@@ -44,8 +45,16 @@ STUDENT_KEY = "student_small"
 EVAL_MAX_SEQ_LENGTH = 4096
 
 
+# base/sft_only finished under the first run (2048-context eval, fine for them) and keep their
+# original "pair2_" files. Teacher conditions were re-run after that run's distilled_8b came out
+# ~= base (never learned the tool-call format): they get "pair2b_" so the first run's files stay on
+# Hugging Face untouched and the worker cannot mistake them for the re-run.
+_FIRST_RUN_CONDITIONS = ("base", "sft_only")
+
+
 def result_path(seed: int, condition: str) -> str:
-    return f"runs/v2-seed{seed}/results/stages/pair2_{condition}.json"
+    prefix = "pair2" if condition in _FIRST_RUN_CONDITIONS else "pair2b"
+    return f"runs/v2-seed{seed}/results/stages/{prefix}_{condition}.json"
 
 
 def loss_log_repo_path(seed: int, condition: str) -> str:
