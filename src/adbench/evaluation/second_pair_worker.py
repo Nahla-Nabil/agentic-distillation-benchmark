@@ -38,10 +38,34 @@ from adbench.evaluation.worker_utils import parse_jobs, run_jobs, split_jobs  # 
 DEFAULT_REPO = "NahlaNabil/adbench-run"
 TASK_SET = "unseen_tools"
 STUDENT_KEY = "student_small"
+# A model that never learned the tool-call format answers in prose, and those long replies pile up in
+# the chain's history; the main pair's 2048 default then truncates the prompt (Unsloth warns) —
+# same reason ext_worker loads with 4096.
+EVAL_MAX_SEQ_LENGTH = 4096
 
 
 def result_path(seed: int, condition: str) -> str:
     return f"runs/v2-seed{seed}/results/stages/pair2_{condition}.json"
+
+
+def loss_log_repo_path(seed: int, condition: str) -> str:
+    return f"runs/v2-seed{seed}/results/training_logs/pair2_{condition}.jsonl"
+
+
+def summarize_loss_log(entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """First/last logged losses plus a non-finite count — enough to tell "the student learned
+    something" from "the loss never moved" without keeping the whole log in every result row."""
+    def col(name: str) -> list[float]:
+        return [e[name] for e in entries if isinstance(e.get(name), (int, float))]
+
+    sft, kd = col("sft_loss"), col("kd_loss")
+    nonfinite = sum(1 for v in sft + kd if v != v or v in (float("inf"), float("-inf")))
+    return {
+        "n_logged": len(entries),
+        "sft_first": sft[0] if sft else None, "sft_last": sft[-1] if sft else None,
+        "kd_first": kd[0] if kd else None, "kd_last": kd[-1] if kd else None,
+        "nonfinite": nonfinite,
+    }
 
 
 def describe_pair2_result(rows: list[dict[str, Any]]) -> str:
@@ -68,7 +92,10 @@ def main() -> None:
 
     from adbench.evaluation.run_eval import load_condition_model, make_harness_model_fn, run_harness_eval_for_condition
     from adbench.harness.tools import build_demo_registry
-    from adbench.training.train import REPO_ROOT, free_gpu_memory, load_experiment_config, train_condition
+    from adbench.data.prepare import read_jsonl
+    from adbench.training.train import (
+        REPO_ROOT, free_gpu_memory, load_experiment_config, loss_log_path, train_condition,
+    )
 
     api = HfApi(token=token)
     experiment_config = load_experiment_config(args.experiment_config)
@@ -97,7 +124,8 @@ def main() -> None:
             student_key=STUDENT_KEY,
         )
         model, tokenizer = load_condition_model(
-            condition, experiment_config, models_config, checkpoint_dir=checkpoint_dir, student_key=STUDENT_KEY
+            condition, experiment_config, models_config, checkpoint_dir=checkpoint_dir,
+            max_seq_length=EVAL_MAX_SEQ_LENGTH, student_key=STUDENT_KEY,
         )
         try:
             model_fn = make_harness_model_fn(model, tokenizer)
@@ -110,10 +138,24 @@ def main() -> None:
             gc.collect()
             free_gpu_memory()
             shutil.rmtree(checkpoint_dir, ignore_errors=True)
+        log_path = loss_log_path(condition)
+        loss_summary = summarize_loss_log(read_jsonl(log_path)) if log_path.exists() else None
+        if log_path.exists():
+            upload_loss_log(seed, condition, log_path)
         for row in eval_rows:
             row["train_steps"] = train_summary.get("steps")
             row["train_n_examples"] = train_summary.get("n_examples")
+            row["train_loss_summary"] = loss_summary
         return eval_rows
+
+    def upload_loss_log(seed: int, condition: str, log_path: Path) -> None:
+        try:
+            api.upload_file(
+                path_or_fileobj=str(log_path), path_in_repo=loss_log_repo_path(seed, condition),
+                repo_id=args.repo, repo_type="model", commit_message=f"second-pair loss log seed {seed} {condition}",
+            )
+        except Exception as e:  # noqa: BLE001 — a diagnostic; never lose the eval result over it
+            print(f"  WARNING: could not upload loss log: {type(e).__name__}: {e}")
 
     def save(seed: int, condition: str, rows: list[dict[str, Any]]) -> None:
         local = out_dir / f"seed{seed}_{condition}.json"

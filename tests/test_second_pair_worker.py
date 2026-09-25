@@ -33,3 +33,23 @@ def test_reexported_job_helpers_are_the_shared_ones():
     assert parse_jobs is worker_utils.parse_jobs
     assert split_jobs is worker_utils.split_jobs
     assert run_jobs is worker_utils.run_jobs
+
+
+def test_summarize_loss_log_reports_first_last_and_nonfinite():
+    from adbench.evaluation.second_pair_worker import summarize_loss_log
+
+    entries = [
+        {"step": 10, "sft_loss": 2.0, "kd_loss": 1.5},
+        {"step": 20, "sft_loss": float("nan"), "kd_loss": 1.0},
+        {"step": 30, "sft_loss": 0.5, "kd_loss": 0.8},
+    ]
+    s = summarize_loss_log(entries)
+    assert (s["n_logged"], s["sft_first"], s["sft_last"], s["kd_first"], s["kd_last"]) == (3, 2.0, 0.5, 1.5, 0.8)
+    assert s["nonfinite"] == 1
+    assert summarize_loss_log([])["sft_first"] is None
+
+
+def test_loss_log_repo_path_is_namespaced_away_from_the_main_pipelines_logs():
+    from adbench.evaluation.second_pair_worker import loss_log_repo_path
+
+    assert loss_log_repo_path(1, "distilled_8b") == "runs/v2-seed1/results/training_logs/pair2_distilled_8b.jsonl"
