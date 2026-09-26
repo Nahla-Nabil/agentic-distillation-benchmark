@@ -116,6 +116,15 @@ training:
     - name: lower_lr
       overrides:
         learning_rate: 5.0e-5
+    # Added for the fair-SFT-baseline / anchoring-dial experiments (evaluation/sweep_worker.py):
+    - name: lower_lr_1ep          # a gentler SFT recipe: lr 5e-5 AND a single epoch
+      overrides:
+        learning_rate: 5.0e-5
+        num_train_epochs: 1
+    - name: sft_vheavy            # near-pure SFT with only a light KD anchor
+      overrides:
+        kd.kd_weight: 0.05
+        kd.sft_weight: 0.95
 
 # Multi-step agentic harness settings (deliverable #2 / #4).
 harness:
