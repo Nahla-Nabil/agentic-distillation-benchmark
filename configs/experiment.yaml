@@ -125,6 +125,10 @@ training:
       overrides:
         kd.kd_weight: 0.05
         kd.sft_weight: 0.95
+    - name: kd_0p1                # between sft_vheavy (0.05) and sft_heavy (0.2): locates the small student's threshold
+      overrides:
+        kd.kd_weight: 0.1
+        kd.sft_weight: 0.9
 
 # Multi-step agentic harness settings (deliverable #2 / #4).
 harness:

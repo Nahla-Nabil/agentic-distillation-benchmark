@@ -63,6 +63,7 @@ def test_the_sweeps_this_worker_relies_on_exist_and_do_what_they_say():
     assert (vh.kd_weight, vh.sft_weight) == (0.05, 0.95)
     assert g("self_distill", "sft_heavy").kd.kd_weight == 0.2
     assert g("self_distill", "kd_heavy").kd.kd_weight == 0.8
+    assert g("self_distill_small", "kd_0p1").kd.kd_weight == 0.1
     assert g("self_distill", None).kd.kd_weight == 0.5  # baseline untouched by the additions
 
 

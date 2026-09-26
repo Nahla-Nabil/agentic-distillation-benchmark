@@ -43,8 +43,8 @@ Each run = open notebooks/16_sweeps.ipynb (Import from local file), edit the fir
 | Round | Account A | Account B | ~time | Then |
 |---|---|---|---|---|
 | 1 | `sft_fair` | `dial_small_probe` | 2 h / 3.3 h | analyse W1 and W3; choose `SMALL_SWEEP` |
-| 2 | `dial_main` | `dial_small_full` (only if the probe rescued the student; else the seed-1/2 repeat of the better setting) | 3.5 h / 3.3 h | analyse W2 |
-| 3 | `data_scale` | `second_family` (stretch) | ~6 h / 8-10 h | analyse W4/W5 |
+| 2 | `dial_main` (~3.5 h), then `data_scale` (~6 h) | `dial_small_full` with `SMALL_SWEEP = "sft_vheavy"` (~2 h), then `dial_small_threshold` (~3 h), then `dial_main_vheavy` (~2 h) | chained runs, one after another per account | analyse W2/W3/W4 |
+| 3 (stretch) | `second_family` (only if the above finish by 2026-10-01) | — | 8-10 h | analyse W5 |
 | — | **2026-10-05: GPU cutoff** | | | writing only |
 
 Rules: (1) each round's results are analysed before the next is chosen; (2) a job that fails is
@@ -73,3 +73,34 @@ arrive; (4) confirm with Nahla before every `git push`.
 Writing starts 2026-10-05 at the latest; a full draft by 2026-10-12; final polish and references
 by 2026-10-16. A literature check (self-distillation / anchoring / KD for tool use) is done in
 parallel to the GPU rounds — novelty is claimed only for what that check supports.
+
+
+## Round log
+
+### Round 1 (notebook 16: `sft_fair`, `dial_small_probe`) — done
+
+Main pair, 3 seeds, overall success % (chains 3+5 in brackets):
+
+| recipe | mean (SD) |
+|---|---|
+| distilled, default | 93.9 (0.5) [90.2 (0.8)] |
+| self_distill, default | 87.1 (2.7) [81.8 (5.0)] |
+| SFT, default (lr 2e-4, 3 ep) | 75.5 (17.2) [62.2 (26.7)] |
+| SFT, lr 5e-5 (`lower_lr`) | 79.6 (1.3) [67.1 (2.0)] |
+| SFT, lr 5e-5 + 1 ep (`lower_lr_1ep`) | 78.2 (2.9) [64.9 (4.7)] |
+
+(The main pipeline's untrained `base` scores 73.3 on chains 3+5, seed 0 only.)
+
+- **W1 answered.** A gentler SFT recipe removes the seed instability (SD 1-3 vs 17) — so "SFT is
+  unstable" holds only for the default recipe and must be worded that way. It does NOT close the gap:
+  distilled minus tuned SFT (`lower_lr`), chains 3+5, crossed bootstrap = +23.1 [+12.0, +34.7]
+  (`lower_lr_1ep`: +25.3 [+12.4, +40.4]). The claim shifts from "KD is more stable" to "every SFT
+  recipe we tried sits at or below the untrained base on multi-step chains, while KD variants exceed
+  it" — an anchoring story. On these 3 seeds self_distill is +14.7 [+2.7, +29.3] over tuned SFT,
+  and distilled - self_distill is ~+8 (chains 3+5; ~+5 over 5 seeds) — the teacher-specific
+  increment is not zero; word it as "smaller than the anchoring effect", not "absent".
+- **W3 first evidence (seed 0 only).** Small student (Qwen3-1.7B), self-anchored KD, overall success:
+  KD weight 0 -> 0.835 (sft_only), 0.05 -> 0.760, 0.2 -> 0.306, 0.5 -> 0.380 (0.324-0.405 over 3
+  seeds), i.e. a sharp collapse between 0.05 and 0.2, and the failure at high weight is the same
+  prose-instead-of-tool-call error. A light anchor nearly recovers the student but does not beat
+  plain SFT for it. Needs seeds 1-2 for 0.05 and the 0.1 point before it is a claim.
