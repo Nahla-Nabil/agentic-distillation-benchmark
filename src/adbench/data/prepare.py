@@ -192,6 +192,25 @@ def balance_and_split(
     return train, test
 
 
+def subsample_per_tool(records: list[dict[str, Any]], per_tool: int, seed: int) -> list[dict[str, Any]]:
+    """The data-scale ablation's training subset: at most `per_tool` records of each tool, chosen
+    by a seeded shuffle of that tool's pool. Deterministic, and NESTED - the per_tool=20 subset is
+    contained in the per_tool=40 subset for the same seed - so a smaller run never sees an example
+    a larger one lacks. Taken from the already-written train split (never the frozen test split),
+    so no new data has to be downloaded or split."""
+    rng = random.Random(seed)
+    by_tool: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in records:
+        by_tool[r["expected_tool_sequence"][0]].append(r)
+    out: list[dict[str, Any]] = []
+    for tool_name in sorted(by_tool):
+        pool = list(by_tool[tool_name])
+        rng.shuffle(pool)
+        out.extend(pool[:per_tool])
+    random.Random(seed + 1).shuffle(out)
+    return out
+
+
 def select_top_n_tools(per_tool_kept: dict[str, int], canonical: dict[str, tuple[str, ...]], n: int) -> list[str]:
     """The n most-available of configs/data.yaml's already-curated tools (by kept-example
     count, ties broken alphabetically for determinism), for the tool-diversity ablation

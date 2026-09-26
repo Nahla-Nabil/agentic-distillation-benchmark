@@ -748,3 +748,10 @@ def test_load_student_default_key_unchanged_and_override_selects_small(monkeypat
 
     load_student(models_config, student_key="student_small")
     assert calls[-1]["model_name"] == models_config["student_small"]["hf_id"]
+
+
+def test_loss_log_dir_can_be_redirected_per_worker(monkeypatch, tmp_path):
+    monkeypatch.setenv("ADBENCH_TRAINING_LOG_DIR", str(tmp_path))
+    assert loss_log_path("sft_only", "lower_lr") == tmp_path / "sft_only-lower_lr.jsonl"
+    monkeypatch.delenv("ADBENCH_TRAINING_LOG_DIR")
+    assert loss_log_path("sft_only").parts[-2:] == ("training_logs", "sft_only.jsonl")

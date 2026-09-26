@@ -310,3 +310,35 @@ def test_ablation_paths_never_collide_with_the_default_split(tmp_path):
     default_train = REPO_ROOT / config["output"]["train_path"]
     assert paths["train_path"] != default_train
     assert paths["train_path"].parent == default_train.parent
+
+
+# --------------------------------------------------------------------------
+# Data-scale ablation: subsample_per_tool
+# --------------------------------------------------------------------------
+
+from adbench.data.prepare import subsample_per_tool  # noqa: E402
+
+
+def _rec(tool, i):
+    return {"expected_tool_sequence": [tool], "id": f"{tool}-{i}"}
+
+
+def test_subsample_per_tool_caps_each_tool_and_keeps_all_tools():
+    recs = [_rec(t, i) for t in ("a", "b", "c") for i in range(30)]
+    out = subsample_per_tool(recs, 7, seed=0)
+    assert len(out) == 21
+    assert {t: sum(r["expected_tool_sequence"][0] == t for r in out) for t in "abc"} == {"a": 7, "b": 7, "c": 7}
+
+
+def test_subsample_per_tool_is_deterministic_and_nested():
+    recs = [_rec(t, i) for t in ("a", "b") for i in range(40)]
+    small = {r["id"] for r in subsample_per_tool(recs, 5, seed=3)}
+    large = {r["id"] for r in subsample_per_tool(recs, 15, seed=3)}
+    assert small < large                                            # nested
+    assert [r["id"] for r in subsample_per_tool(recs, 5, seed=3)] == [r["id"] for r in subsample_per_tool(recs, 5, seed=3)]
+    assert small != {r["id"] for r in subsample_per_tool(recs, 5, seed=4)}   # different seed -> different subset
+
+
+def test_subsample_per_tool_smaller_pool_than_cap_keeps_everything():
+    recs = [_rec("a", i) for i in range(4)]
+    assert len(subsample_per_tool(recs, 10, seed=0)) == 4

@@ -9,6 +9,10 @@ Two questions it exists to answer (see notebooks/16_sweeps.ipynb):
      `sft_heavy` 0.2, baseline 0.5, `kd_heavy` 0.8) with a teacher-free anchor (self_distill /
      self_distill_small) on the strong (main) and weak (small) student.
 
+A `sweep` may carry a data-scale suffix, `<sweep>@n<k>` (e.g. `baseline@n20`): train on a seeded, nested
+subset of the default train split with at most k examples per tool (data-scale ablation; the default
+split has 80 per tool). `baseline` means no hyperparameter overrides.
+
 `pair` is "main" (Qwen3-4B student) or "small" (Qwen3-1.7B student); everything else - the training
 data (configs/data.yaml's default split), the 121-task unseen_tools eval set, chains 1/3/5 - is
 identical to the main pipeline, so numbers are directly comparable. `sweep` is a name from
@@ -58,6 +62,16 @@ def parse_sweep_jobs(spec: str) -> list[tuple[int, str, str, str]]:
     return jobs
 
 
+def split_sweep_spec(sweep: str) -> tuple[str, int | None]:
+    """'lower_lr' -> ('lower_lr', None); 'baseline@n20' -> ('baseline', 20)."""
+    name, sep, scale = sweep.partition("@n")
+    if not sep:
+        return sweep, None
+    if not scale.isdigit() or int(scale) < 1:
+        raise ValueError(f"sweep {sweep!r}: the data-scale suffix must look like @n<positive integer>")
+    return name, int(scale)
+
+
 def result_path(seed: int, pair: str, sweep: str, condition: str) -> str:
     return f"runs/v2-seed{seed}/results/stages/sweep_{pair}_{sweep}_{condition}.json"
 
@@ -97,7 +111,7 @@ def main() -> None:
 
     from huggingface_hub import HfApi
 
-    from adbench.data.prepare import read_jsonl
+    from adbench.data.prepare import read_jsonl, subsample_per_tool, write_jsonl
     from adbench.evaluation.run_eval import load_condition_model, make_harness_model_fn, run_harness_eval_for_condition
     from adbench.harness.tools import build_demo_registry
     from adbench.training.train import (
@@ -113,6 +127,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     registry = build_demo_registry()
     glaive_train_path = REPO_ROOT / "data" / "splits" / "train.jsonl"
+    os.environ["ADBENCH_TRAINING_LOG_DIR"] = str(work_dir / "training_logs")  # per worker, never shared
 
     def already_done(seed: int, key: str) -> bool:
         return api.file_exists(repo_id=args.repo, filename=result_path(seed, *split_key(key)), repo_type="model")
@@ -125,13 +140,18 @@ def main() -> None:
                 "(once, before starting workers)."
             )
         student_key = STUDENT_KEYS[pair]
-        sweep_name = None if sweep == "baseline" else sweep
+        base_sweep, per_tool = split_sweep_spec(sweep)
+        sweep_name = None if base_sweep == "baseline" else base_sweep
+        train_path = glaive_train_path
+        if per_tool is not None:
+            train_path = work_dir / "data" / f"train_{per_tool}_per_tool_seed{seed}.jsonl"
+            write_jsonl(subsample_per_tool(read_jsonl(glaive_train_path), per_tool, seed), train_path)
         checkpoint_dir = work_dir / "checkpoints" / f"{pair}_{sweep}" / condition
         os.environ["ADBENCH_SEED"] = str(seed)
         train_summary = train_condition(
             condition, experiment_config, models_config,
             sweep_name=sweep_name,
-            glaive_train_path=glaive_train_path, checkpoint_dir_override=checkpoint_dir,
+            glaive_train_path=train_path, checkpoint_dir_override=checkpoint_dir,
             student_key=student_key,
         )
         log_path = loss_log_path(condition, sweep_name)

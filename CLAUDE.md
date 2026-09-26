@@ -132,10 +132,13 @@ new eval paths over longer contexts should do the same
   8B or from itself) stays ~base (0.32-0.44) while SFT reaches 0.83-0.88 —
   KD's anchoring hurts a student whose base can't do the task.
 - `16_sweeps.ipynb` — one `EXPERIMENT` per run (`sft_fair`, `dial_main`,
-  `dial_small_probe`, `dial_small_full`): fair-SFT baseline and the
+  `dial_small_probe`, `dial_small_full`, `data_scale`): fair-SFT baseline and the
   KD-weight "anchoring dial", via `sweep_worker.py` and the additive sweeps in
   `configs/experiment.yaml` (`lower_lr`, `lower_lr_1ep`, `sft_heavy`,
-  `sft_vheavy`, `kd_heavy`). Different accounts run DIFFERENT experiments.
+  `sft_vheavy`, `kd_heavy`). A sweep name may end in `@n<k>` = train on k
+  examples per tool (seeded nested subset of the train split;
+  `data/prepare.py::subsample_per_tool`). Different accounts run DIFFERENT
+  experiments. `ADBENCH_TRAINING_LOG_DIR` redirects loss logs per worker.
 
 `10_check_batching.ipynb` is superseded (folded into 11/13/14/15's setup
 cells) — don't run it standalone.
@@ -147,9 +150,8 @@ doesn't duplicate those, since they change every run) — but as of writing:
 seeds 0-4 done on the main pipeline + extended set + BFCL; tool-diversity
 ablation complete (12/12 jobs, KD flat across 2/4/8 tools); second model pair
 run (KD ~ base for the small student); notebook 16's sweeps implemented and
-about to run (Round 1 of `docs/EXPERIMENT_PLAN.md`). Still to build: a
-`data_scale` ablation (needs a `--per-tool-target` flag in `data/prepare.py`)
-and, as a stretch, a second model family. If you're picking this repo up cold, check
+running (Round 1 of `docs/EXPERIMENT_PLAN.md`; `data_scale` is built for
+Round 3). Still to build, as a stretch only: a second model family. If you're picking this repo up cold, check
 `results/` and the HF repo's `runs/v2-seed*/results/stages/*.done` markers
 for what's actually finished before assuming anything above is current.
 

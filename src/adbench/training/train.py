@@ -383,8 +383,12 @@ def _pad_batch(examples: list[dict[str, list[int]]], pad_token_id: int) -> dict[
 # --------------------------------------------------------------------------
 
 def loss_log_path(condition: str, sweep_name: str | None = None) -> Path:
+    """ADBENCH_TRAINING_LOG_DIR (optional) redirects where logs are written - two parallel workers
+    training the same condition/sweep in one checkout would otherwise overwrite each other's log."""
     name = condition if sweep_name is None else f"{condition}-{sweep_name}"
-    return REPO_ROOT / "results" / "training_logs" / f"{name}.jsonl"
+    override = os.environ.get("ADBENCH_TRAINING_LOG_DIR")
+    base = Path(override) if override else REPO_ROOT / "results" / "training_logs"
+    return base / f"{name}.jsonl"
 
 
 def write_loss_log(entries: list[dict[str, Any]], path: str | Path) -> None:

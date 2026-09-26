@@ -64,3 +64,20 @@ def test_the_sweeps_this_worker_relies_on_exist_and_do_what_they_say():
     assert g("self_distill", "sft_heavy").kd.kd_weight == 0.2
     assert g("self_distill", "kd_heavy").kd.kd_weight == 0.8
     assert g("self_distill", None).kd.kd_weight == 0.5  # baseline untouched by the additions
+
+
+def test_split_sweep_spec():
+    from adbench.evaluation.sweep_worker import split_sweep_spec
+
+    assert split_sweep_spec("lower_lr") == ("lower_lr", None)
+    assert split_sweep_spec("baseline@n20") == ("baseline", 20)
+    assert split_sweep_spec("sft_heavy@n40") == ("sft_heavy", 40)
+    for bad in ("baseline@n", "baseline@nx", "baseline@n0"):
+        with pytest.raises(ValueError):
+            split_sweep_spec(bad)
+
+
+def test_data_scale_results_never_collide_with_full_data_results():
+    assert result_path(0, "main", "baseline@n20", "sft_only") != result_path(0, "main", "baseline", "sft_only")
+    assert result_path(0, "main", "baseline@n20", "sft_only") != result_path(0, "main", "baseline@n40", "sft_only")
+    assert parse_sweep_jobs("0:main:baseline@n20:sft_only") == [(0, "main", "baseline@n20", "sft_only")]

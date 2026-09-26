@@ -29,7 +29,7 @@ significant in our setting"), never "KD transfers no knowledge".
 | W1 | SFT baseline may simply be untuned | `sft_fair`: sft_only with lr 5e-5 (`lower_lr`) and lr 5e-5 + 1 epoch (`lower_lr_1ep`), main pair, 3 seeds | If SFT stays unstable (SD >> KD's) the claim gets stronger. If it stabilises near KD, reframe: "KD ~ well-tuned SFT" and report it. |
 | W2 | "anchoring" is a hypothesis, not shown | `dial_main`: self_distill at KD weight 0.2 / 0.8 (0.5 exists), main pair, 3 seeds — expect a monotone stability/accuracy trade-off | Gives a dose-response curve for the anchoring claim. |
 | W3 | second-pair failure mechanism unproven | `dial_small_probe`: self_distill_small at KD weight 0.2 / 0.05, seed 0; then `dial_small_full` (seeds 1-2) for the setting that works | If lowering the anchor rescues the weak student -> "anchor strength must match student competence" is demonstrated. If not -> report as a boundary of the method. |
-| W4 | small data is the assumed regime | `data_scale` (to build): sft_only vs self_distill at 160 / 320 / 640 training examples (per-tool target 20 / 40 / 100), main pair | Tests the original regularisation-against-overfitting story directly. Upward scaling is capped by the dataset (scarcest tool has only 183 kept examples), so we scale DOWN. |
+| W4 | small data is the assumed regime | `data_scale` (built, notebook 16): sft_only vs self_distill at 160 / 320 / 640 training examples (20 / 40 / 80 per tool; 640 = the existing full runs), seeded nested subsets of the default train split, main pair, 3 seeds | Tests the original regularisation-against-overfitting story directly. Upward scaling is capped by the dataset (scarcest tool has only 183 kept examples), so we scale DOWN. |
 | W5 | one model family | `second_family` (to build, stretch): Llama-3.2-3B-Instruct student / Llama-3.1-8B-Instruct teacher (same tokenizer, vocab 128256 both, so KD logits align; gated repos -> needs HF access). Fallback: Qwen2.5-3B/7B needs vocab slicing (151936 vs 152064). | Only launched if Rounds 1-2 finish by 2026-10-01. |
 | W6 | BFCL checker is simplified | not fixable in time (needs re-evaluation with the official scorer); state as a limitation | — |
 
@@ -44,7 +44,7 @@ Each run = open notebooks/16_sweeps.ipynb (Import from local file), edit the fir
 |---|---|---|---|---|
 | 1 | `sft_fair` | `dial_small_probe` | 2 h / 3.3 h | analyse W1 and W3; choose `SMALL_SWEEP` |
 | 2 | `dial_main` | `dial_small_full` (only if the probe rescued the student; else the seed-1/2 repeat of the better setting) | 3.5 h / 3.3 h | analyse W2 |
-| 3 | `data_scale` (after it is built) | `second_family` (stretch) | 4-6 h / 8-10 h | analyse W4/W5 |
+| 3 | `data_scale` | `second_family` (stretch) | ~6 h / 8-10 h | analyse W4/W5 |
 | — | **2026-10-05: GPU cutoff** | | | writing only |
 
 Rules: (1) each round's results are analysed before the next is chosen; (2) a job that fails is
