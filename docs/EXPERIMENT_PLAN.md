@@ -104,3 +104,26 @@ Main pair, 3 seeds, overall success % (chains 3+5 in brackets):
   seeds), i.e. a sharp collapse between 0.05 and 0.2, and the failure at high weight is the same
   prose-instead-of-tool-call error. A light anchor nearly recovers the student but does not beat
   plain SFT for it. Needs seeds 1-2 for 0.05 and the 0.1 point before it is a claim.
+
+### Round 2, first half (notebook 16: `dial_main`, `dial_small_full` with `sft_vheavy`) — done
+
+Overall success % (3 seeds, mean; per-seed in brackets). Anchor = frozen copy of the student itself.
+
+| KD weight | strong student (Qwen3-4B) | weak student (Qwen3-1.7B) |
+|---|---|---|
+| 0 (plain SFT, default recipe) | 75.5 (SD 17) | 84.6 (SD 2.7) |
+| 0.05 | pending (`dial_main_vheavy`) | 64.7 [76.0, 57.0, 61.2] |
+| 0.2 | 92.0 [91.7, 92.6, 91.7] | 30.6 (seed 0 only) |
+| 0.5 (default) | 87.1 [86.0, 85.1, 90.1] | 38.3 [38.0, 40.5, 36.4] |
+| 0.8 | 90.1 [90.9, 88.4, 90.9] | — |
+| untrained base | 80.2 (seed 0) | 33.1 |
+
+- Strong student: a plateau. Any KD weight from 0.2 to 0.8 gives 87-92, far above SFT; a weight of
+  0.2 (mostly SFT + a light self-anchor) already matches distillation from the 14B teacher (93.9).
+  The dip at 0.5 is within seed noise (SD 2.7) — do not read a trend into it.
+- Weak student: monotone harm. Every increment of anchor weight costs accuracy: 0 -> 84.6, 0.05 ->
+  64.7 (and seed-to-seed spread of ~10), 0.2 -> base level. Failures at high weight are the same
+  prose-instead-of-tool-call error; the anchored student never leaves the base's behaviour.
+- Reading: the value of an anchor depends on the student's own competence — strong student
+  tolerates and benefits from it across a wide range, weak student is hurt by even a light one.
+  Caveats: self-anchor only, one pair per student size, 3 seeds, seed-0-only for 0.2 on the small pair.
