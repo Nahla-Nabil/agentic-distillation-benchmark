@@ -6,7 +6,8 @@ argument; read this for "where things are and what's in flight."
 
 **Owner:** Nahla Nabil. **Target:** SCIBT 2027 (IEEE, 4-8 pages), deadline
 **2026-10-17**. Self-imposed cutoff for new GPU experiments: **2026-10-05**,
-to leave ~12 days for writing.
+to leave ~12 days for writing. **The plan of record is `docs/EXPERIMENT_PLAN.md`**
+(thesis, claim/evidence table, weaknesses -> experiments, round schedule) — read it first.
 
 ## What this project is
 
@@ -34,7 +35,7 @@ full framing.
   `batching.py` (BatchedModelFn — see "batching" below), `metrics.py`,
   `bfcl.py` (external BFCL benchmark loader/checker), and the **resumable
   two-GPU workers**: `ext_worker.py`, `bfcl_worker.py`, `ablation_worker.py`,
-  `second_pair_worker.py` — all share job bookkeeping from `worker_utils.py`
+  `second_pair_worker.py`, `sweep_worker.py` — all share job bookkeeping from `worker_utils.py`
   (`parse_jobs`/`split_jobs`/`run_jobs`; a worker's own `result_path()` and
   `describe_*_result()` are the only per-worker pieces).
 - `src/adbench/analysis/layer_analysis.py` — CKA/cosine-distance layer probe.
@@ -46,7 +47,7 @@ full framing.
 - `configs/` — `data.yaml`, `models.yaml` (student/teacher pairs, LoRA), `experiment.yaml`
   (conditions list, training hyperparameters, harness settings).
 - `notebooks/` — Kaggle-run pipelines, see "Notebooks" below.
-- `tests/` — everything not needing a GPU is unit-tested (currently 449+
+- `tests/` — everything not needing a GPU is unit-tested (currently 458
   tests). Anything touching Unsloth/real model weights is "reviewed by
   reading," not tested locally — flagged as such in the relevant module's
   docstring.
@@ -88,6 +89,24 @@ condition every time (this happened once in `ext_worker`'s job list; see
 project memory for the exact failure). Check the resulting split's balance
 before trusting a time estimate.
 
+**Teacher conditions need BOTH GPUs visible.** `train.load_teacher` puts the
+teacher on GPU 1 only when `torch.cuda.device_count() > 1`; pinning a worker to
+one GPU (right for `sft_only`/`base`) makes teacher + student share one T4 ->
+CUDA OOM. So notebooks 14/15/16 run in two phases: Phase A = teacher-free jobs
+as two pinned parallel workers; Phase B = teacher jobs (KD weight > 0, detected
+via `resolve_training_config(...).kd.kd_weight > 0`) sequentially in ONE process
+with both GPUs visible. Teacher jobs cost ~52 min (14B teacher), ~85-110 min
+(1.7B student, 8B teacher or self-teacher).
+
+**Loss logs are per Kaggle session and get lost** unless a worker uploads them:
+`second_pair_worker` and `sweep_worker` upload each job's loss log and store a
+`train_loss_summary` in every result row. Do that for any new training worker.
+
+**Result-path versions**: `pair2_<cond>.json` = second pair, first run (2048-ctx
+eval; base + sft_only live here); `pair2b_<cond>.json` = re-run of the teacher
+conditions (4096-ctx, with loss logs). The first run's distilled_8b files are
+kept as a trace. `sweep_<pair>_<sweep>_<cond>.json` = notebook 16.
+
 **Context length**: eval checkpoints load with `configs/models.yaml`'s
 `max_seq_length` (2048) by default. The extended 12-tool task set's longer
 system prompt + 5-step history can exceed that and crash Unsloth's attention
@@ -109,7 +128,14 @@ new eval paths over longer contexts should do the same
   — see `ablation_worker.py`'s docstring for why it's not retrained).
 - `15_second_model_pair.ipynb` — trains+evaluates the second model pair
   (student_small=Qwen3-1.7B, teacher_8b=Qwen3-8B) — tests whether findings
-  generalize beyond one model size.
+  generalize beyond one model size. Finding: with the 1.7B student, KD (from
+  8B or from itself) stays ~base (0.32-0.44) while SFT reaches 0.83-0.88 —
+  KD's anchoring hurts a student whose base can't do the task.
+- `16_sweeps.ipynb` — one `EXPERIMENT` per run (`sft_fair`, `dial_main`,
+  `dial_small_probe`, `dial_small_full`): fair-SFT baseline and the
+  KD-weight "anchoring dial", via `sweep_worker.py` and the additive sweeps in
+  `configs/experiment.yaml` (`lower_lr`, `lower_lr_1ep`, `sft_heavy`,
+  `sft_vheavy`, `kd_heavy`). Different accounts run DIFFERENT experiments.
 
 `10_check_batching.ipynb` is superseded (folded into 11/13/14/15's setup
 cells) — don't run it standalone.
@@ -119,15 +145,18 @@ cells) — don't run it standalone.
 See the session's own project memory for exact numbers and dates (this file
 doesn't duplicate those, since they change every run) — but as of writing:
 seeds 0-4 done on the main pipeline + extended set + BFCL; tool-diversity
-ablation and second model pair are implemented and either running or about
-to run. If you're picking this repo up cold, check
+ablation complete (12/12 jobs, KD flat across 2/4/8 tools); second model pair
+run (KD ~ base for the small student); notebook 16's sweeps implemented and
+about to run (Round 1 of `docs/EXPERIMENT_PLAN.md`). Still to build: a
+`data_scale` ablation (needs a `--per-tool-target` flag in `data/prepare.py`)
+and, as a stretch, a second model family. If you're picking this repo up cold, check
 `results/` and the HF repo's `runs/v2-seed*/results/stages/*.done` markers
 for what's actually finished before assuming anything above is current.
 
 ## Conventions worth preserving
 
 - A worker script's `result_path()` always includes every dimension that
-  varies (condition, and n_tools/category when relevant) so two kinds of run
+  varies (condition, and n_tools/category/pair/sweep when relevant) so two kinds of run
   can never silently collide on Hugging Face.
 - New eval task sets get their own `task_set` string (`unseen_tools`,
   `unseen_tools_ext`, `bfcl_simple`, `bfcl_multiple`, ...) — never reuse or
