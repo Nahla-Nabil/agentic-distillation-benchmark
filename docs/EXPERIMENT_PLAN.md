@@ -160,3 +160,22 @@ untouched across the range, which is the main claim this ablation was run for).
 Roughly monotone decline from 0 to 0.2, flattening out by 0.5 (within noise of the 0.2 point,
 which has only one seed). The steepest single drop is between 0.05 and 0.1 (~24 points) — there is
 no single sharp "cliff", it is a graded collapse across the whole 0-0.2 range for this student.
+
+### `dial_main_vheavy` (kd=0.05, main pair, 3 seeds) — done — Round 2 complete
+
+Overall %: 93.4, 86.8, 90.9 -> mean 90.4 (SD 3.3). Full strong-student dial:
+
+| KD weight | 0 (SFT) | 0.05 | 0.2 | 0.5 | 0.8 |
+|---|---|---|---|---|---|
+| overall % | 75.5 (SD 17.2) | 90.4 (SD 3.3) | 92.0 | 87.1 | 90.1 |
+
+The jump from 0 to 0.05 already reaches the plateau — a very light self-anchor is enough for the
+strong student. This sharpens the asymmetry with the weak student at the SAME weight (0.05):
+strong 75.5 -> 90.4 (+14.9), weak 84.6 -> 64.7 (-19.9). Same tiny anchor, opposite sign of effect,
+depending only on the student's own competence at the task before anchoring. This is the cleanest
+single number for the paper's core mechanism claim.
+
+**All of docs/EXPERIMENT_PLAN.md's Round 1-2 notebook-16 experiments are now complete.** Remaining
+optional stretch items (W5 second model family; more data_scale points) are not scheduled unless
+time permits after a complete analysis pass. Next steps: crossed-bootstrap pass over all sweep
+contrasts, final figures, then writing (see "Paper outline" above).
