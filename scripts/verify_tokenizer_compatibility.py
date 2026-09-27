@@ -7,18 +7,26 @@ requirements.txt's core set since it's a one-off check, not a runtime
 dependency of anything else in adbench yet.
 
     pip install transformers
-    python scripts/verify_tokenizer_compatibility.py
+    python scripts/verify_tokenizer_compatibility.py                       # default: main pair
+    python scripts/verify_tokenizer_compatibility.py --teacher <hf_id> --student <hf_id>
 
-RESULT (checked 2026-09, both repos' tokenizer configs as published on HF):
-    Qwen/Qwen3-14B and Qwen/Qwen3-4B-Instruct-2507 use the identical
-    tokenizer: Qwen2Tokenizer, vocab_size=151643 (len=151669 incl. added
-    special tokens), same eos/pad tokens, and identical token-id sequences
-    across code, JSON tool-call syntax, and CJK sample strings.
-    => logit-level KD (src/adbench/training/losses.py::combined_loss) is
-       safe to use as implemented. See that module's docstring for the
+RESULTS (checked 2026-09, each pair's tokenizer configs as published on HF; the models.yaml
+entry for each pair repeats the relevant summary as a comment):
+    Qwen/Qwen3-14B vs Qwen/Qwen3-4B-Instruct-2507 (main pair): identical Qwen2Tokenizer,
+    vocab_size=151643 (len=151669), same special tokens, identical token-id sequences
+    across code/JSON/tool-call/CJK samples.
+    Qwen/Qwen3-8B vs Qwen/Qwen3-1.7B (second pair): same result, same tokenizer family.
+    allenai/OLMo-2-1124-7B-Instruct vs allenai/OLMo-2-0425-1B-Instruct (third pair, a
+    DIFFERENT model family from Qwen): identical GPT-2-style BPE tokenizer,
+    vocab_size=100278, same special tokens (bos=eos=unk=<|endoftext|>, pad=<|pad|>),
+    identical token-id sequences across the same sample set.
+    => logit-level KD (src/adbench/training/losses.py::combined_loss) is safe to use as
+       implemented for all three pairs. See that module's docstring for the
        sequence-level-distillation fallback kept in reserve in case a future
        teacher/student pairing does NOT share a tokenizer.
 """
+
+import argparse
 
 from transformers import AutoTokenizer
 
@@ -72,4 +80,8 @@ def check_tokenizer_compatibility(teacher_id: str = TEACHER, student_id: str = S
 
 
 if __name__ == "__main__":
-    check_tokenizer_compatibility()
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--teacher", default=TEACHER)
+    parser.add_argument("--student", default=STUDENT)
+    args = parser.parse_args()
+    check_tokenizer_compatibility(args.teacher, args.student)

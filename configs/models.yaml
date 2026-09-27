@@ -74,6 +74,53 @@ student_small:
       - up_proj
       - down_proj
 
+# Third model pair — a DIFFERENT family (AI2's OLMo, not Qwen), to check the paper's
+# findings aren't specific to one lab's models. Fully open weights/data/training code
+# (unlike Llama/Gemma, which are gated and were the first choice but blocked on a
+# manual per-account license-acceptance step) — also a better fit for a reproducibility
+# story than a gated family.
+#
+# Tokenizer compatibility VERIFIED 2026-09 (scripts/verify_tokenizer_compatibility.py
+# --teacher allenai/OLMo-2-1124-7B-Instruct --student allenai/OLMo-2-0425-1B-Instruct):
+# identical GPT-2-style BPE tokenizer, vocab_size=100278, matching special tokens
+# (bos=eos=unk=<|endoftext|>, pad=<|pad|>, all matching ids), and matching token-id
+# sequences across code/JSON/tool-call/CJK samples — same guarantee as the other two
+# pairs, logit-level KD is safe. Architecture: Olmo2ForCausalLM, standard
+# q/k/v/o_proj + gate/up/down_proj naming (Unsloth's FastLanguageModel supports OLMo-2).
+# teacher_olmo: 32 layers, hidden 4096. student_olmo: 16 layers, hidden 2048. ~7x
+# compression (main pair ~3.7x, second pair ~4.8x) — the widest ratio of the three.
+teacher_olmo:
+  hf_id: allenai/OLMo-2-1124-7B-Instruct
+  role: teacher
+  load_in_4bit: true
+  max_seq_length: 2048
+
+# "Self" teacher for this pair's self-distillation control — must be student_olmo's OWN
+# base model, not teacher_self/teacher_self_small above (those belong to the other pairs).
+teacher_self_olmo:
+  hf_id: allenai/OLMo-2-0425-1B-Instruct
+  role: teacher
+  load_in_4bit: true
+  max_seq_length: 2048
+
+student_olmo:
+  hf_id: allenai/OLMo-2-0425-1B-Instruct
+  role: student
+  load_in_4bit: true
+  max_seq_length: 2048
+  lora:
+    r: 16
+    alpha: 16
+    dropout: 0.0
+    target_modules:
+      - q_proj
+      - k_proj
+      - v_proj
+      - o_proj
+      - gate_proj
+      - up_proj
+      - down_proj
+
 student:
   hf_id: Qwen/Qwen3-4B-Instruct-2507
   role: student

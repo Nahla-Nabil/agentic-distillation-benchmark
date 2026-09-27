@@ -2,18 +2,23 @@
 
 ## 3.1 Models
 
-We study two teacher-student pairs, both from the Qwen3 family [Yang25], to check whether our
-findings hold across model scale. The **main pair** distills Qwen3-14B (14.8B parameters) into
-Qwen3-4B-Instruct-2507 (4.0B parameters), a 3.7x compression. The **second pair** distills
-Qwen3-8B (8.2B parameters) into Qwen3-1.7B (1.7B parameters), a 4.8x compression, and tests
-whether the main pair's findings generalize to a weaker student. Both students are fine-tuned
-with QLoRA [Dettmers23]: 4-bit-quantized frozen base weights with trainable low-rank adapters
-[Hu22] (rank 16, alpha 16, dropout 0, applied to all seven linear projections in each transformer
-block — query/key/value/output and gate/up/down). All four models are loaded through Unsloth for
-4-bit inference and training on a single NVIDIA T4 GPU. Teacher and student in each pair share an
-identical tokenizer (Qwen2Tokenizer, vocabulary size 151,643), verified by exact token-id
-agreement on code, JSON, and CJK text samples — this guarantee is what makes logit-level KD (Sec.
-3.2) valid without any vocabulary alignment step.
+We study three teacher-student pairs. Two are from the Qwen3 family [Yang25] and vary model
+scale: the **main pair** distills Qwen3-14B (14.8B parameters) into Qwen3-4B-Instruct-2507 (4.0B
+parameters), a 3.7x compression, and the **second pair** distills Qwen3-8B (8.2B parameters) into
+Qwen3-1.7B (1.7B parameters), a 4.8x compression, testing whether the main pair's findings
+generalize to a weaker student. The **third pair** varies model *family* instead: OLMo-2-1124-7B-
+Instruct into OLMo-2-0425-1B-Instruct (AI2's fully open OLMo-2 [OLMo25] — a different
+architecture and training pipeline from Qwen, chosen over Llama/Gemma because those require a
+per-account license acceptance we could not obtain in time), a 7x compression, testing whether the
+findings are specific to Qwen's training recipe. All three students are fine-tuned with QLoRA
+[Dettmers23]: 4-bit-quantized frozen base weights with trainable low-rank adapters [Hu22] (rank
+16, alpha 16, dropout 0, applied to all seven linear projections in each transformer block —
+query/key/value/output and gate/up/down). All six models are loaded through Unsloth for 4-bit
+inference and training on a single NVIDIA T4 GPU. Teacher and student in each pair share an
+identical tokenizer, verified by exact vocabulary-size and token-id agreement on code, JSON, and
+CJK text samples (Qwen2Tokenizer, vocabulary 151,643, for both Qwen3 pairs; a GPT-2-style BPE
+tokenizer, vocabulary 100,278, for the OLMo-2 pair) — this guarantee is what makes logit-level KD
+(Sec. 3.2) valid without any vocabulary alignment step, for all three pairs.
 
 ## 3.2 Conditions
 
@@ -30,14 +35,16 @@ is attributable to the loss, not to a confound in the training recipe:
   where $L_{\text{KD}}$ is the standard temperature-softened KL divergence between student and
   teacher next-token distributions [Hinton15] at temperature $T=2$, computed only over the
   completion span (the same mask as sft_only). Default weights $w_{\text{sft}}{=}w_{\text{kd}}{=}0.5$.
-- **self_distill** (main pair) / **self_distill_small** (second pair) — identical loss to
-  `distilled`, but the "teacher" is a frozen copy of the student's *own* pre-fine-tuning
-  checkpoint, never updated during training. At step 0 the self-teacher's logits equal the
-  student's own, so this condition isolates the KD loss term's regularizing/anchoring effect from
-  any information the teacher's own extra training could contribute — cf. Born-Again Networks
-  [Furlanello18] and self-distillation-as-regularization [Zhang19], [Mobahi20].
-- **distilled_8b** — for the second pair only: KD from the larger external teacher (Qwen3-8B),
-  the second-pair analogue of `distilled`.
+- **self_distill** (main pair) / **self_distill_small** (second pair) / **self_distill_olmo**
+  (third pair) — identical loss to `distilled`, but the "teacher" is a frozen copy of the
+  student's *own* pre-fine-tuning checkpoint, never updated during training. At step 0 the
+  self-teacher's logits equal the student's own, so this condition isolates the KD loss term's
+  regularizing/anchoring effect from any information the teacher's own extra training could
+  contribute — cf. Born-Again Networks [Furlanello18] and self-distillation-as-regularization
+  [Zhang19], [Mobahi20].
+- **distilled_8b** / **distilled_olmo** — for the second and third pairs respectively: KD from
+  that pair's larger external teacher (Qwen3-8B / OLMo-2-7B-Instruct), the pair-specific analogue
+  of `distilled`.
 - Two secondary controls on the main pair reported alongside the primary comparison:
   **sft_early** (SFT with a single epoch instead of three, to check whether SFT's behavior is an
   overfitting artifact of training length) and **sft_ls** (SFT with label smoothing 0.1, a loss-

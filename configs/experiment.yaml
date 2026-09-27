@@ -67,6 +67,22 @@ conditions:
     loss: kd
     teacher: teacher_self_small
 
+  # ---- Third model pair (a different model family: AI2's OLMo, not Qwen) ----
+  # Reuses "base"/"sft_only" as-is (student_olmo passed explicitly, see
+  # evaluation/third_pair_worker.py). distilled_olmo/self_distill_olmo are this
+  # pair's analogues of distilled_8b/self_distill_small above.
+  - id: distilled_olmo
+    label: "KD from an external teacher (OLMo-2-7B), third model pair"
+    checkpoint: checkpoints/distilled_olmo/
+    loss: kd
+    teacher: teacher_olmo
+
+  - id: self_distill_olmo
+    label: "KD from the frozen student itself, third model pair"
+    checkpoint: checkpoints/self_distill_olmo/
+    loss: kd
+    teacher: teacher_self_olmo
+
 # Training hyperparameters — named here, not hardcoded in train.py, so
 # they're easy to read, change, and sweep without touching code.
 #

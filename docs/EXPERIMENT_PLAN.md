@@ -30,7 +30,7 @@ significant in our setting"), never "KD transfers no knowledge".
 | W2 | "anchoring" is a hypothesis, not shown | `dial_main`: self_distill at KD weight 0.2 / 0.8 (0.5 exists), main pair, 3 seeds — expect a monotone stability/accuracy trade-off | Gives a dose-response curve for the anchoring claim. |
 | W3 | second-pair failure mechanism unproven | `dial_small_probe`: self_distill_small at KD weight 0.2 / 0.05, seed 0; then `dial_small_full` (seeds 1-2) for the setting that works | If lowering the anchor rescues the weak student -> "anchor strength must match student competence" is demonstrated. If not -> report as a boundary of the method. |
 | W4 | small data is the assumed regime | `data_scale` (built, notebook 16): sft_only vs self_distill at 160 / 320 / 640 training examples (20 / 40 / 80 per tool; 640 = the existing full runs), seeded nested subsets of the default train split, main pair, 3 seeds | Tests the original regularisation-against-overfitting story directly. Upward scaling is capped by the dataset (scarcest tool has only 183 kept examples), so we scale DOWN. |
-| W5 | one model family | `second_family` (to build, stretch): Llama-3.2-3B-Instruct student / Llama-3.1-8B-Instruct teacher (same tokenizer, vocab 128256 both, so KD logits align; gated repos -> needs HF access). Fallback: Qwen2.5-3B/7B needs vocab slicing (151936 vs 152064). | Only launched if Rounds 1-2 finish by 2026-10-01. |
+| W5 | one model family | `17_third_model_pair.ipynb` / `third_pair_worker.py` (built): OLMo-2-0425-1B-Instruct student / OLMo-2-1124-7B-Instruct teacher, base/sft_only/distilled_olmo/self_distill_olmo, 3 seeds. Llama-3.2-3B/Llama-3.1-8B was the first choice and had matching tokenizers (vocab 128256), but both are gated on HF (403, needs per-account manual license acceptance) — switched to OLMo-2, which is ungated, tokenizer-verified compatible (GPT-2-style BPE, vocab 100278, matching special tokens and sample encodings), and confirmed Unsloth-supported. Not time-constrained (per Nahla, time is not the limiter here) — committed, not a stretch item. | Round 3. |
 | W6 | BFCL checker is simplified | not fixable in time (needs re-evaluation with the official scorer); state as a limitation | — |
 
 Never run the same setting on two accounts: the two accounts always run DIFFERENT jobs.
@@ -44,7 +44,7 @@ Each run = open notebooks/16_sweeps.ipynb (Import from local file), edit the fir
 |---|---|---|---|---|
 | 1 | `sft_fair` | `dial_small_probe` | 2 h / 3.3 h | analyse W1 and W3; choose `SMALL_SWEEP` |
 | 2 | `dial_main` (~3.5 h), then `data_scale` (~6 h) | `dial_small_full` with `SMALL_SWEEP = "sft_vheavy"` (~2 h), then `dial_small_threshold` (~3 h), then `dial_main_vheavy` (~2 h) | chained runs, one after another per account | analyse W2/W3/W4 |
-| 3 (stretch) | `second_family` (only if the above finish by 2026-10-01) | — | 8-10 h | analyse W5 |
+| 3 | `17_third_model_pair.ipynb` (Phase A: base+sft_only, ~1.5 h; Phase B: distilled_olmo+self_distill_olmo x 3 seeds, ~6 h — split across two accounts/sessions as with the other notebooks) | — | ~7-8 h total | analyse W5 |
 | — | **2026-10-05: GPU cutoff** | | | writing only |
 
 Rules: (1) each round's results are analysed before the next is chosen; (2) a job that fails is
@@ -67,7 +67,8 @@ arrive; (4) confirm with Nahla before every `git push`.
 3. Results — (i) KD vs SFT and stability, (ii) anchoring vs teacher knowledge, (iii) external
    benchmarks, (iv) tool diversity and data scale, (v) when anchoring fails (second pair, dial).
 4. Analysis — failure modes; (optional) layer-wise CKA if there is time.
-5. Limitations — simplified BFCL checker, synthetic harness, one family unless W5 lands, small data.
+5. Limitations — simplified BFCL checker, synthetic harness, small data (see W5 for the
+   third-family check, which is running rather than a stated gap).
 6. Conclusion.
 
 Writing starts 2026-10-05 at the latest; a full draft by 2026-10-12; final polish and references
@@ -175,10 +176,10 @@ strong 75.5 -> 90.4 (+14.9), weak 84.6 -> 64.7 (-19.9). Same tiny anchor, opposi
 depending only on the student's own competence at the task before anchoring. This is the cleanest
 single number for the paper's core mechanism claim.
 
-**All of docs/EXPERIMENT_PLAN.md's Round 1-2 notebook-16 experiments are now complete.** Remaining
-optional stretch items (W5 second model family; more data_scale points) are not scheduled unless
-time permits after a complete analysis pass. Next steps: crossed-bootstrap pass over all sweep
-contrasts, final figures, then writing (see "Paper outline" above).
+**All of docs/EXPERIMENT_PLAN.md's Round 1-2 notebook-16 experiments are now complete.** Round 3
+(W5, third model pair — OLMo-2, notebook 17) is built and queued next. More `data_scale` points
+remain genuinely optional (low marginal value, see the round-3 decision note above) and are not
+scheduled. Next: run notebook 17, then writing continues in parallel (see "Paper outline" above).
 
 ## Statistics pass: crossed bootstrap over every contrast (chains 3+5, seeds x templates, 6000 resamples)
 

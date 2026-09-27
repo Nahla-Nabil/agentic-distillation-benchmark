@@ -39,7 +39,7 @@ full framing.
   `batching.py` (BatchedModelFn — see "batching" below), `metrics.py`,
   `bfcl.py` (external BFCL benchmark loader/checker), and the **resumable
   two-GPU workers**: `ext_worker.py`, `bfcl_worker.py`, `ablation_worker.py`,
-  `second_pair_worker.py`, `sweep_worker.py` — all share job bookkeeping from `worker_utils.py`
+  `second_pair_worker.py`, `third_pair_worker.py`, `sweep_worker.py` — all share job bookkeeping from `worker_utils.py`
   (`parse_jobs`/`split_jobs`/`run_jobs`; a worker's own `result_path()` and
   `describe_*_result()` are the only per-worker pieces).
 - `src/adbench/analysis/layer_analysis.py` — CKA/cosine-distance layer probe.
@@ -51,7 +51,7 @@ full framing.
 - `configs/` — `data.yaml`, `models.yaml` (student/teacher pairs, LoRA), `experiment.yaml`
   (conditions list, training hyperparameters, harness settings).
 - `notebooks/` — Kaggle-run pipelines, see "Notebooks" below.
-- `tests/` — everything not needing a GPU is unit-tested (currently 458
+- `tests/` — everything not needing a GPU is unit-tested (currently 472
   tests). Anything touching Unsloth/real model weights is "reviewed by
   reading," not tested locally — flagged as such in the relevant module's
   docstring.
@@ -136,13 +136,26 @@ new eval paths over longer contexts should do the same
   8B or from itself) stays ~base (0.32-0.44) while SFT reaches 0.83-0.88 —
   KD's anchoring hurts a student whose base can't do the task.
 - `16_sweeps.ipynb` — one `EXPERIMENT` per run (`sft_fair`, `dial_main`,
-  `dial_small_probe`, `dial_small_full`, `data_scale`): fair-SFT baseline and the
-  KD-weight "anchoring dial", via `sweep_worker.py` and the additive sweeps in
+  `dial_small_probe`, `dial_small_full`, `dial_main_vheavy`,
+  `dial_small_threshold`, `data_scale`): fair-SFT baseline and the KD-weight
+  "anchoring dial", via `sweep_worker.py` and the additive sweeps in
   `configs/experiment.yaml` (`lower_lr`, `lower_lr_1ep`, `sft_heavy`,
-  `sft_vheavy`, `kd_heavy`). A sweep name may end in `@n<k>` = train on k
-  examples per tool (seeded nested subset of the train split;
+  `sft_vheavy`, `kd_heavy`, `kd_0p1`). A sweep name may end in `@n<k>` = train
+  on k examples per tool (seeded nested subset of the train split;
   `data/prepare.py::subsample_per_tool`). Different accounts run DIFFERENT
   experiments. `ADBENCH_TRAINING_LOG_DIR` redirects loss logs per worker.
+  **Complete** — see `docs/EXPERIMENT_PLAN.md`'s "Statistics pass" for the
+  full bootstrap results.
+- `17_third_model_pair.ipynb` — trains+evaluates the THIRD model pair
+  (student_olmo=OLMo-2-0425-1B-Instruct, teacher_olmo=OLMo-2-1124-7B-Instruct)
+  — a different model FAMILY from Qwen3 (AI2's fully-open OLMo-2), not just a
+  different size. Llama/Gemma were considered first and ruled out: both are
+  gated on Hugging Face and block on a manual per-account license-acceptance
+  step; OLMo-2 is ungated, tokenizer-verified compatible (GPT-2-style BPE,
+  vocab 100278), and Unsloth-supported. Same two-phase pattern, same
+  `third_pair_worker.py` (evaluates at 4096 ctx and uploads loss logs from
+  the start — lessons from `second_pair_worker.py`'s history already baked
+  in, so this pair should not need the same 2048->4096 re-run).
 
 `10_check_batching.ipynb` is superseded (folded into 11/13/14/15's setup
 cells) — don't run it standalone.
@@ -153,11 +166,14 @@ See the session's own project memory for exact numbers and dates (this file
 doesn't duplicate those, since they change every run) — but as of writing:
 seeds 0-4 done on the main pipeline + extended set + BFCL; tool-diversity
 ablation complete (12/12 jobs, KD flat across 2/4/8 tools); second model pair
-run (KD ~ base for the small student); notebook 16's sweeps implemented and
-running (Round 1 of `docs/EXPERIMENT_PLAN.md`; `data_scale` is built for
-Round 3). Still to build, as a stretch only: a second model family. If you're picking this repo up cold, check
-`results/` and the HF repo's `runs/v2-seed*/results/stages/*.done` markers
-for what's actually finished before assuming anything above is current.
+complete (KD ~ base for the small student); notebook 16's sweep rounds 1-2
+complete with a full crossed-bootstrap pass (23 contrasts); notebook 17 (third
+model pair, OLMo-2, a different family) built and not yet run. **The project
+is in the writing phase** — `paper/` has drafted sections (Method done),
+`docs/PAPER_OUTLINE.md` has the plan. If you're picking this repo up cold,
+check `results/` and the HF repo's `runs/v2-seed*/results/stages/*.done`
+markers for what's actually finished before assuming anything above is
+current.
 
 ## Conventions worth preserving
 

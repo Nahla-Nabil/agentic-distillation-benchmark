@@ -84,8 +84,9 @@ cite in Section 3.1 (Method) where the models and training method are introduced
 ## 3. Method (~1-1.25 pages)
 
 ### 3.1 Models and setup
-Table: main pair (Qwen3-14B teacher, Qwen3-4B-Instruct-2507 student) and second pair (Qwen3-8B,
-Qwen3-1.7B), both Unsloth 4-bit QLoRA. State why a second pair: generalization check across
+Table: main pair (Qwen3-14B teacher, Qwen3-4B-Instruct-2507 student), second pair (Qwen3-8B,
+Qwen3-1.7B), and third pair (OLMo-2-1124-7B-Instruct, OLMo-2-0425-1B-Instruct — a different model
+family from Qwen), all Unsloth 4-bit QLoRA. State why a second pair: generalization check across
 student competence.
 
 ### 3.2 Conditions
@@ -154,8 +155,10 @@ the cleanest single failure-mode signal and orders conditions identically to the
 
 ## 6. Limitations (~0.25-0.5 page — be complete, this is a strength if done honestly)
 
-- Single model family (Qwen3); one additional size pair, not an additional family — the second-
-  family experiment was scoped as a stretch goal and may or may not have run by submission.
+- Model-family coverage: two Qwen3 size pairs plus one different-family pair (OLMo-2, notebook
+  17/Round 3, running) — still only two families total; update this bullet with the OLMo-2 result
+  once it lands (either it replicates the main finding, strengthening the generality claim, or it
+  doesn't, which is itself reportable and goes in Sec. 4/5, not just here).
 - Small dataset regime (640 training examples) — the data-scale ablation only tests down to 160,
   not up, since the curated tool pool caps the upward direction; conclusions about the mechanism
   are bounded to this regime.
@@ -211,6 +214,9 @@ draft time, not here.
   ICLR, 2022. arXiv:2106.09685.
 - **[Dettmers23]** T. Dettmers, A. Pagnoni, A. Holtzman, and L. Zettlemoyer, "QLoRA: Efficient
   Finetuning of Quantized LLMs," in Proc. NeurIPS, 2023. arXiv:2305.14314.
+- **[OLMo25]** Team OLMo et al. (P. Walsh, L. Soldaini, D. Groeneveld, K. Lo, et al.), "2 OLMo 2
+  Furious," in Proc. COLM, 2025. arXiv:2501.00656. (Third-pair model family — chosen for being
+  fully open: weights, training data, and code all public, unlike Llama/Gemma which are gated.)
 
 Two entries ([Zhou25], [Chen23]) need their full author lists confirmed from the paper itself
 before the reference list is finalized — the search gave the paper and arXiv id but not a

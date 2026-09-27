@@ -52,7 +52,10 @@ CONDITIONS = ("base", "sft_only", "distilled")  # the original three-way compari
 #   self_distill_small self_distill's counterpart for the second model pair (see
 #     evaluation/second_pair_worker.py) — teacher is student_small's own frozen base
 # Each is defined by its entry in configs/experiment.yaml's `conditions`.
-CONTROL_CONDITIONS = ("sft_early", "sft_ls", "self_distill", "distilled_8b", "self_distill_small")
+CONTROL_CONDITIONS = (
+    "sft_early", "sft_ls", "self_distill", "distilled_8b", "self_distill_small",
+    "distilled_olmo", "self_distill_olmo",
+)
 ALL_CONDITIONS = CONDITIONS + CONTROL_CONDITIONS
 
 # Legacy loss kind for the three original conditions when their config entry has no `loss:` key.
