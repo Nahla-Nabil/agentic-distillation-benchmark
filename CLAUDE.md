@@ -7,7 +7,11 @@ argument; read this for "where things are and what's in flight."
 **Owner:** Nahla Nabil. **Target:** SCIBT 2027 (IEEE, 4-8 pages), deadline
 **2026-10-17**. Self-imposed cutoff for new GPU experiments: **2026-10-05**,
 to leave ~12 days for writing. **The plan of record is `docs/EXPERIMENT_PLAN.md`**
-(thesis, claim/evidence table, weaknesses -> experiments, round schedule) — read it first.
+(thesis, claim/evidence table, weaknesses -> experiments, round schedule, and a
+full crossed-bootstrap statistics pass) — read it first. All planned GPU
+experiments are DONE as of 2026-09-28; the project is now in the writing phase.
+**`docs/PAPER_OUTLINE.md`** has the section-by-section outline, figure/table
+inventory, and drafting schedule.
 
 ## What this project is
 
