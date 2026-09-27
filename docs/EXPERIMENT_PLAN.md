@@ -179,3 +179,59 @@ single number for the paper's core mechanism claim.
 optional stretch items (W5 second model family; more data_scale points) are not scheduled unless
 time permits after a complete analysis pass. Next steps: crossed-bootstrap pass over all sweep
 contrasts, final figures, then writing (see "Paper outline" above).
+
+## Statistics pass: crossed bootstrap over every contrast (chains 3+5, seeds x templates, 6000 resamples)
+
+All numbers below are point estimate [95% CI], bootstrap two-sided p. Positive = first group higher.
+
+| contrast | diff | 95% CI | p |
+|---|---|---|---|
+| distilled vs default SFT (main, 5 seeds) | +21.3 | [+5.1, +42.1] | .0023 |
+| self_distill vs default SFT (main, 5 seeds) | +16.5 | [-1.1, +40.0] | .072 (n.s.) |
+| distilled vs self_distill (teacher-specific increment) | +4.8 | [-5.9, +16.0] | .39 (n.s.) |
+| distilled vs tuned SFT (lr 5e-5) | +23.1 | [+12.0, +34.7] | <.001 |
+| distilled vs tuned SFT (lr 5e-5, 1 ep) | +25.3 | [+12.0, +40.0] | <.001 |
+| self_distill vs tuned SFT (lr 5e-5) | +14.7 | [+2.7, +28.9] | .019 |
+| tuned SFT vs default SFT | +4.9 | [-18.7, +36.5] | .79 (n.s.) |
+| dial kd=0.2 vs kd=0.5 (main, self-anchor) | +5.3 | [-0.4, +14.2] | .128 (n.s.) |
+| dial kd=0.8 vs kd=0.5 (main) | +2.2 | [-2.7, +8.9] | .41 (n.s.) |
+| dial kd=0.05 vs kd=0.5 (main) | +2.7 | [-2.7, +9.3] | .34 (n.s.) |
+| dial kd=0.05 vs SFT default (main) | +22.2 | [-3.6, +55.1] | .13 (n.s., wide CI) |
+| data_scale n20: self_distill vs sft_only | +6.2 | [-2.7, +16.0] | .155 (n.s.) |
+| data_scale n40: self_distill vs sft_only | +14.2 | [+0.9, +29.3] | .043 |
+| data_scale sft_only: n20 vs n80 | +8.9 | [-5.8, +34.7] | .53 (n.s.) |
+| data_scale sft_only: n40 vs n80 | +6.7 | [-17.8, +39.1] | .68 (n.s.) |
+| data_scale self_distill: n20 vs n80 | -4.4 | [-19.1, +8.0] | .51 (n.s.) |
+| data_scale self_distill: n40 vs n80 | +1.3 | [-6.2, +9.8] | .74 (n.s.) |
+| small pair: sft_only vs base | +69.3 | [+53.3, +82.7] | <.001 |
+| small pair: distilled_8b vs base | +4.0 | [-2.7, +12.0] | .37 (n.s.) |
+| small pair: distilled_8b vs sft_only | -65.3 | [-82.7, -44.0] | <.001 |
+| small pair dial: kd=0.05 vs kd=0 (sft_only) | -30.2 | [-50.7, -9.8] | .0033 |
+| small pair dial: kd=0.1 vs kd=0.05 | -28.0 | [-54.2, +1.3] | .062 (n.s.) |
+| small pair dial: kd=0.2 vs kd=0.1 | -16.0 | [-30.7, -2.7] | .0157 |
+
+**How this changes the write-up:**
+- The single strongest, cleanest claim is **`distilled`/`self_distill` vs a *tuned* SFT baseline**
+  (both p<.02, CIs well clear of 0) — lead with this, not the default-recipe contrast.
+- **`self_distill` vs *default* SFT is NOT significant on its own** (p=.072, driven entirely by
+  default SFT's huge seed variance) — say "self_distill matches or exceeds SFT and is far more
+  consistent" rather than claim a significant mean advantage there specifically; the tuned-SFT
+  and BFCL/extended-set results carry that part of the argument instead.
+- **Teacher-specific increment stays non-significant** (p=.39) — correctly hedge this claim as
+  "small and not distinguishable from zero in our sample," not "absent."
+- **The anchoring-dial points on the main pair are each individually n.s. against kd=0.5** (all
+  clustered 87-92) — the plateau claim rests on the pattern (all five weights beating SFT clearly,
+  none beating each other), not on any single pairwise test; state it that way.
+- **data_scale's "no small-data explanation" claim is weakened by the bootstrap**: none of the
+  n20-vs-n80 or n40-vs-n80 contrasts are significant (small n=3 seeds, wide CIs) — the SD numbers
+  are real and worth reporting descriptively, but do NOT claim a proven "opposite of the expected
+  direction" effect; say the data are consistent with no data-scale effect on stability, which
+  itself argues against a small-data-overfitting mechanism without needing the reversal to be
+  significant.
+- **Small-pair story is airtight**: sft_only beats base and beats distilled_8b, both p<.001;
+  distilled_8b itself is indistinguishable from base (p=.37, supports "KD anchors to a bad base");
+  the dial's first drop (kd 0->0.05) and third drop (kd 0.1->0.2) are both significant, the middle
+  step (0.05->0.1) is borderline (p=.062) — report the overall monotone trend, not each step as
+  independently proven.
+
+Analysis script: scratchpad `bootstrap_all.py` (to be moved into `scripts/` once figures are final).
