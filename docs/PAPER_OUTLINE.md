@@ -37,19 +37,49 @@ teacher-specific increment n.s. p=.39; symmetric dial result +14.9/-19.9pt), the
      (tool scarcity, small-data overfitting) for why SFT is unstable.
 - Close with the one-sentence thesis and a forward pointer to Section 3's results.
 
-## 2. Related work (~0.5-0.75 page — needs the literature pass before drafting)
+## 2. Related work (~0.5-0.75 page)
 
-Buckets to fill (search before writing, do not cite from memory):
-- Knowledge distillation surveys / foundational KD (Hinton et al. framing already used for the
-  loss — cite properly).
-- Self-distillation as regularization (Born-Again Networks and successors) — this is the closest
-  prior art to the anchoring claim; the contribution here is applying it to *agentic tool-use*
-  with controlled ablations, not the regularization idea itself. Scope the novelty claim to that.
-- LLM function-calling / tool-use fine-tuning and benchmarks (Glaive, BFCL, ToolBench-style work).
-- Agentic multi-step evaluation harnesses (why single-turn accuracy under-measures compounding
-  error).
-- Small-model fine-tuning instability / LoRA fine-tuning variance across seeds, if literature
-  exists — relevant to the SFT-instability finding.
+Literature pass done 2026-09-28 (WebSearch, not from memory — see References for exact citations).
+Five buckets, each with the one-sentence framing to use when citing it:
+
+- **Foundational KD** [Hinton15]. Standard soft-target KD loss and temperature — cite for the loss
+  formulation (`losses.py::kd_divergence`), not as a claim about mechanism.
+- **Self-distillation as regularization — the closest prior art to the anchoring claim.**
+  [Furlanello18] (Born-Again Networks: a student identically parameterized to its teacher, trained
+  by KD from it, outperforms the teacher) and [Zhang19] (splits one network into sections and
+  distills the deep section into shallow ones, no external teacher) established empirically that a
+  "teacher" is not required for KD to help. [Mobahi20] gives the only theoretical account we found:
+  self-distillation provably contracts the effective hypothesis space (fewer usable basis
+  functions per round), a regularization effect, and further rounds move from under- to over-
+  regularizing. **Scope the novelty claim precisely against this bucket**: the regularization-via-
+  self-distillation *idea* is established (2019-2020, vision/tabular settings); this paper's
+  contribution is (a) testing it in agentic multi-step tool-use, an interactive, compounding-error
+  setting distinct from single-forward-pass classification, and (b) the anchoring-strength dial
+  showing the same mechanism helps a competent model and actively harms a weak one at the same
+  weight — a symmetry [Mobahi20]'s theory does not by itself predict (their "too many rounds hurt"
+  finding is about anchor *iteration count* holding student capability fixed, not about anchor
+  *weight* varying with the student's own baseline competence). Say this plainly in Section 2, not
+  just in Discussion.
+- **LLM function-calling fine-tuning and data.** [Patil23] (Gorilla) fine-tunes LLaMA for accurate
+  API calls and introduces APIBench; [Qin23] (ToolLLM/ToolBench) scales this to 16k+ real APIs with
+  auto-generated multi-step instructions. The training data here (Glaive function-calling v2) is a
+  smaller, simpler single-tool-per-example corpus in the same lineage — cite both for the
+  fine-tuning-for-tool-use framing, note the scale difference honestly.
+- **Evaluation: single-turn vs. multi-step/agentic.** [Patil25] (BFCL) is the external benchmark
+  used here (simple + multiple categories); [Liu23] (AgentBench) established multi-turn,
+  multi-environment agent evaluation as necessary because single-turn accuracy does not capture
+  compounding error over a trajectory — cite for the methodological argument behind the
+  chain-length design (Section 3.4), even though this paper's own harness is a separate,
+  purpose-built synthetic one, not AgentBench's environments.
+- **Fine-tuning instability across random seeds.** [Dodge20], [Zhou25], and [Chen23] each show
+  pretrained-LM fine-tuning varies substantially across seeds, worse on small datasets — cite as
+  the general phenomenon behind Section 4.1/7a's SFT seed-variance finding; note none of these are
+  agentic/tool-use settings, so this paper extends the observation to that setting and adds the "a
+  gentler recipe removes the instability, but the KD gap doesn't close" result on top of it.
+
+Base-model and method citations to include but not build a Related Work paragraph around: [Yang25]
+(Qwen3 technical report, the teacher/student model family), [Hu22] (LoRA), [Dettmers23] (QLoRA) —
+cite in Section 3.1 (Method) where the models and training method are introduced, not here.
 
 ## 3. Method (~1-1.25 pages)
 
@@ -146,9 +176,47 @@ pre-training competence probe).
 
 ## References
 
-To be built during the literature pass (Section 2 above). Target 15-25 references for an 8-page
-IEEE paper — KD/self-distillation foundations, function-calling/tool-use benchmarks, agentic
-eval methodology, and any directly relevant fine-tuning-stability work.
+Literature pass done 2026-09-28. Citation keys match Section 2's bracketed references. Verify each
+against the venue's final (non-arXiv) publication before submission where one exists (several of
+these are ICML/ICLR/NeurIPS papers with arXiv preprints); IEEE reference formatting is applied at
+draft time, not here.
+
+- **[Hinton15]** G. Hinton, O. Vinyals, and J. Dean, "Distilling the Knowledge in a Neural
+  Network," arXiv:1503.02531, 2015.
+- **[Furlanello18]** T. Furlanello, Z. C. Lipton, M. Tschannen, L. Itti, and A. Anandkumar,
+  "Born-Again Neural Networks," in Proc. ICML, 2018, pp. 1607-1616. arXiv:1805.04770.
+- **[Zhang19]** L. Zhang, J. Song, A. Gao, J. Chen, C. Bao, and K. Ma, "Be Your Own Teacher: Improve
+  the Performance of Convolutional Neural Networks via Self Distillation," in Proc. ICCV, 2019,
+  pp. 3713-3722. arXiv:1905.08094.
+- **[Mobahi20]** H. Mobahi, M. Farajtabar, and P. L. Bartlett, "Self-Distillation Amplifies
+  Regularization in Hilbert Space," in Proc. NeurIPS, 2020. arXiv:2002.05715.
+- **[Patil23]** S. G. Patil, T. Zhang, X. Wang, and J. E. Gonzalez, "Gorilla: Large Language Model
+  Connected with Massive APIs," arXiv:2305.15334, 2023.
+- **[Qin23]** Y. Qin et al., "ToolLLM: Facilitating Large Language Models to Master 16000+
+  Real-world APIs," arXiv:2307.16789, 2023.
+- **[Patil25]** S. G. Patil et al., "The Berkeley Function Calling Leaderboard (BFCL): From Tool
+  Use to Agentic Evaluation of Large Language Models," in Proc. ICML, 2025.
+  https://proceedings.mlr.press/v267/patil25a.html
+- **[Liu23]** X. Liu et al., "AgentBench: Evaluating LLMs as Agents," in Proc. ICLR, 2024.
+  arXiv:2308.03688.
+- **[Dodge20]** J. Dodge, G. Ilharco, R. Schwartz, A. Farhadi, H. Hajishirzi, and N. Smith,
+  "Fine-Tuning Pretrained Language Models: Weight Initializations, Data Orders, and Early
+  Stopping," arXiv:2002.06305, 2020.
+- **[Zhou25]** [author list to verify from the paper], "Assessing the Macro and Micro Effects of
+  Random Seeds on Fine-Tuning Large Language Models," arXiv:2503.07329, 2025.
+- **[Chen23]** [author list to verify from the paper], "Measuring the Instability of
+  Fine-Tuning," arXiv:2302.07778, 2023.
+- **[Yang25]** A. Yang et al. (Qwen Team), "Qwen3 Technical Report," arXiv:2505.09388, 2025.
+- **[Hu22]** E. J. Hu et al., "LoRA: Low-Rank Adaptation of Large Language Models," in Proc.
+  ICLR, 2022. arXiv:2106.09685.
+- **[Dettmers23]** T. Dettmers, A. Pagnoni, A. Holtzman, and L. Zettlemoyer, "QLoRA: Efficient
+  Finetuning of Quantized LLMs," in Proc. NeurIPS, 2023. arXiv:2305.14314.
+
+Two entries ([Zhou25], [Chen23]) need their full author lists confirmed from the paper itself
+before the reference list is finalized — the search gave the paper and arXiv id but not a
+complete author list. 14 references now; add 2-4 more if the drafted Related Work needs finer
+distinctions (e.g. a second agentic-eval benchmark alongside AgentBench, or a KD-for-LLMs
+survey) once Section 4 is drafted and it's clear which claims need another citation.
 
 ## Figures/tables inventory (map 1:1 to the Artifact report's sections)
 
