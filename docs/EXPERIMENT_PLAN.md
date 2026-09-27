@@ -127,3 +127,36 @@ Overall success % (3 seeds, mean; per-seed in brackets). Anchor = frozen copy of
 - Reading: the value of an anchor depends on the student's own competence — strong student
   tolerates and benefits from it across a wide range, weak student is hurt by even a light one.
   Caveats: self-anchor only, one pair per student size, 3 seeds, seed-0-only for 0.2 on the small pair.
+
+### Round 2, second half (notebook 16: `data_scale`, `dial_small_threshold`) — done
+
+**data_scale** — sft_only vs self_distill at 20/40/80 examples per tool (160/320/640 total), main
+pair, 3 seeds. Overall % mean (SD) / chains-3+5 % mean (SD):
+
+| examples/tool | sft_only | self_distill |
+|---|---|---|
+| 20 | 82.1 (5.8) / 71.1 (9.3) | 85.7 (3.4) / 77.2 (4.7) |
+| 40 | 80.7 (4.8) / 68.9 (7.6) | 88.7 (1.0) / 82.8 (0.8) |
+| 80 (main pipeline) | 75.5 (17.2) / 62.2 (26.7) | 87.1 (2.7) / 81.8 (5.0) |
+
+Reading: self_distill is stable at every data scale (SD 0.8-5.0 on chains 3+5) and slightly
+*higher* mean at 20/40 than at 80 (noise, not a trend — CIs will overlap). sft_only's SD does NOT
+shrink at lower data as the naive "anchoring protects against overfitting a small dataset" story
+predicts — if anything it is far WORSE at full data (SD 26.7) than at 20/40 (SD 7.6-9.3). This
+contradicts a simple small-data-overfitting mechanism: whatever makes sft_only's seed-to-seed
+outcome unstable is not simply "too little data", since less data did not make it worse and full
+data made it much worse. Needs the crossed bootstrap and a look at which seed/template combinations
+drive the 80-example instability before drawing a mechanism claim; for now report the pattern
+and flag it as unexplained, not as evidence against anchoring (self_distill's OWN stability is
+untouched across the range, which is the main claim this ablation was run for).
+
+**dial_small_threshold** — small pair, self-anchor at KD weight 0.1, 3 seeds: overall 40.2 (SD
+3.4), chains 3+5 19.1 (SD 3.1). Completes the threshold curve for the weak student:
+
+| KD weight | 0 | 0.05 | 0.1 | 0.2 | 0.5 |
+|---|---|---|---|---|---|
+| overall % | 84.6 | 64.7 | 40.2 | 30.6 (seed 0 only) | 38.3 |
+
+Roughly monotone decline from 0 to 0.2, flattening out by 0.5 (within noise of the 0.2 point,
+which has only one seed). The steepest single drop is between 0.05 and 0.1 (~24 points) — there is
+no single sharp "cliff", it is a graded collapse across the whole 0-0.2 range for this student.
