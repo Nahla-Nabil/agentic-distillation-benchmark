@@ -121,6 +121,45 @@ student_olmo:
       - up_proj
       - down_proj
 
+# Fourth pair — the SAME family as the third (OLMo-2) at a larger size, added 2026-10-02 because
+# the 1B OLMo student hit a floor (~0% on chains 3/5 for every condition, sft_only included), so
+# the third pair could not test the multi-step claim. Tokenizer compatibility VERIFIED 2026-10-02
+# (scripts/verify_tokenizer_compatibility.py --teacher allenai/OLMo-2-1124-13B-Instruct
+# --student allenai/OLMo-2-1124-7B-Instruct): vocab_size=100278, identical special tokens and
+# sample encodings — logit-level KD is safe. teacher_olmo13: 40 layers, hidden 5120;
+# student_olmo7: 32 layers, hidden 4096; ~1.9x compression. Memory on 2x T4 is comparable to the
+# main pair (Qwen3-14B teacher + 4B student, which fits): 13B teacher in 4-bit on GPU 1, 7B student
+# in 4-bit + LoRA on GPU 0.
+teacher_olmo13:
+  hf_id: allenai/OLMo-2-1124-13B-Instruct
+  role: teacher
+  load_in_4bit: true
+  max_seq_length: 2048
+
+teacher_self_olmo7:
+  hf_id: allenai/OLMo-2-1124-7B-Instruct
+  role: teacher
+  load_in_4bit: true
+  max_seq_length: 2048
+
+student_olmo7:
+  hf_id: allenai/OLMo-2-1124-7B-Instruct
+  role: student
+  load_in_4bit: true
+  max_seq_length: 2048
+  lora:
+    r: 16
+    alpha: 16
+    dropout: 0.0
+    target_modules:
+      - q_proj
+      - k_proj
+      - v_proj
+      - o_proj
+      - gate_proj
+      - up_proj
+      - down_proj
+
 student:
   hf_id: Qwen/Qwen3-4B-Instruct-2507
   role: student

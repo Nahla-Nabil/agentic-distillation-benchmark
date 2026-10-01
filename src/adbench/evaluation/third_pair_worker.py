@@ -21,6 +21,12 @@ resumable via a result file already on Hugging Face, checkpoints deleted after e
     runs/v2-seed<k>/results/stages/pair3_<condition>.json
     runs/v2-seed<k>/results/training_logs/pair3_<condition>.jsonl
 
+`--pair olmo7b` (added 2026-10-02) runs the FOURTH pair with the same code: student_olmo7
+(OLMo-2-1124-7B-Instruct) + teacher_olmo13 (OLMo-2-1124-13B-Instruct), conditions "base",
+"sft_only", "distilled_olmo7", "self_distill_olmo7", uploaded under the "pair4_" prefix. It exists
+because the 1B student sat at ~0% on chains 3/5 for every condition, so the third pair could not
+test the multi-step claim. The default (`--pair olmo1b`) is unchanged.
+
 Needs HF_TOKEN (write access to ADBENCH_HF_REPO) in the environment.
 """
 
@@ -40,14 +46,20 @@ DEFAULT_REPO = "NahlaNabil/adbench-run"
 TASK_SET = "unseen_tools"
 STUDENT_KEY = "student_olmo"
 EVAL_MAX_SEQ_LENGTH = 4096
+# pair name -> (student key in configs/models.yaml, result-file prefix on Hugging Face)
+PAIRS = {
+    "olmo1b": (STUDENT_KEY, "pair3"),
+    "olmo7b": ("student_olmo7", "pair4"),
+}
+DEFAULT_PAIR = "olmo1b"
 
 
-def result_path(seed: int, condition: str) -> str:
-    return f"runs/v2-seed{seed}/results/stages/pair3_{condition}.json"
+def result_path(seed: int, condition: str, pair: str = DEFAULT_PAIR) -> str:
+    return f"runs/v2-seed{seed}/results/stages/{PAIRS[pair][1]}_{condition}.json"
 
 
-def loss_log_repo_path(seed: int, condition: str) -> str:
-    return f"runs/v2-seed{seed}/results/training_logs/pair3_{condition}.jsonl"
+def loss_log_repo_path(seed: int, condition: str, pair: str = DEFAULT_PAIR) -> str:
+    return f"runs/v2-seed{seed}/results/training_logs/{PAIRS[pair][1]}_{condition}.jsonl"
 
 
 def describe_pair3_result(rows: list[dict[str, Any]]) -> str:
@@ -64,7 +76,9 @@ def main() -> None:
     parser.add_argument("--repo", default=os.environ.get("ADBENCH_HF_REPO", DEFAULT_REPO))
     parser.add_argument("--experiment-config", default="configs/experiment.yaml")
     parser.add_argument("--models-config", default="configs/models.yaml")
+    parser.add_argument("--pair", choices=sorted(PAIRS), default=DEFAULT_PAIR)
     args = parser.parse_args()
+    student_key = PAIRS[args.pair][0]
 
     token = os.environ.get("HF_TOKEN")
     if not token:
@@ -90,12 +104,12 @@ def main() -> None:
     glaive_train_path = REPO_ROOT / "data" / "splits" / "train.jsonl"  # the main pipeline's own split, unmodified
 
     def already_done(seed: int, condition: str) -> bool:
-        return api.file_exists(repo_id=args.repo, filename=result_path(seed, condition), repo_type="model")
+        return api.file_exists(repo_id=args.repo, filename=result_path(seed, condition, args.pair), repo_type="model")
 
     def upload_loss_log(seed: int, condition: str, log_path: Path) -> None:
         try:
             api.upload_file(
-                path_or_fileobj=str(log_path), path_in_repo=loss_log_repo_path(seed, condition),
+                path_or_fileobj=str(log_path), path_in_repo=loss_log_repo_path(seed, condition, args.pair),
                 repo_id=args.repo, repo_type="model", commit_message=f"third-pair loss log seed {seed} {condition}",
             )
         except Exception as e:  # noqa: BLE001 - a diagnostic; never lose the eval result over it
@@ -112,11 +126,11 @@ def main() -> None:
         train_summary = train_condition(
             condition, experiment_config, models_config,
             glaive_train_path=glaive_train_path, checkpoint_dir_override=checkpoint_dir,
-            student_key=STUDENT_KEY,
+            student_key=student_key,
         )
         model, tokenizer = load_condition_model(
             condition, experiment_config, models_config, checkpoint_dir=checkpoint_dir,
-            max_seq_length=EVAL_MAX_SEQ_LENGTH, student_key=STUDENT_KEY,
+            max_seq_length=EVAL_MAX_SEQ_LENGTH, student_key=student_key,
         )
         try:
             model_fn = make_harness_model_fn(model, tokenizer)
@@ -142,7 +156,7 @@ def main() -> None:
     def save(seed: int, condition: str, rows: list[dict[str, Any]]) -> None:
         local = out_dir / f"seed{seed}_{condition}.json"
         local.write_text(json.dumps(rows), encoding="utf-8")
-        path = result_path(seed, condition)
+        path = result_path(seed, condition, args.pair)
         for attempt in range(1, 4):
             try:
                 api.upload_file(

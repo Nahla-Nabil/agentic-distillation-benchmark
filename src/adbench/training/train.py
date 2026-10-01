@@ -55,6 +55,7 @@ CONDITIONS = ("base", "sft_only", "distilled")  # the original three-way compari
 CONTROL_CONDITIONS = (
     "sft_early", "sft_ls", "self_distill", "distilled_8b", "self_distill_small",
     "distilled_olmo", "self_distill_olmo",
+    "distilled_olmo7", "self_distill_olmo7",
 )
 ALL_CONDITIONS = CONDITIONS + CONTROL_CONDITIONS
 

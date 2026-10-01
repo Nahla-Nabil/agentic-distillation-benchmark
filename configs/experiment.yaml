@@ -83,6 +83,20 @@ conditions:
     loss: kd
     teacher: teacher_self_olmo
 
+  # ---- Fourth model pair (OLMo-2 again, larger: 13B teacher / 7B student) ----
+  # Same worker as the third pair (third_pair_worker.py --pair olmo7b).
+  - id: distilled_olmo7
+    label: "KD from an external teacher (OLMo-2-13B), fourth model pair"
+    checkpoint: checkpoints/distilled_olmo7/
+    loss: kd
+    teacher: teacher_olmo13
+
+  - id: self_distill_olmo7
+    label: "KD from the frozen student itself, fourth model pair"
+    checkpoint: checkpoints/self_distill_olmo7/
+    loss: kd
+    teacher: teacher_self_olmo7
+
 # Training hyperparameters — named here, not hardcoded in train.py, so
 # they're easy to read, change, and sweep without touching code.
 #

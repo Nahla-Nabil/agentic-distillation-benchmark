@@ -267,3 +267,17 @@ level, plausibly because OLMo-2's instruction tuning (Tulu-style SFT+DPO) does n
 explicit function-calling data the way Qwen3's does, so even single-step learning is harder.
 
 **All three model pairs are now fully evaluated. No further GPU work is planned.**
+
+## Round 4 (notebook 18: OLMo-2 13B -> 7B) — built 2026-10-02, not yet run
+
+Purpose: the 1B OLMo student (Round 3) sat at ~0% on chains 3/5 for every condition, so the
+different-family check only covered the overall/chain-1 metric. A 7B OLMo student should clear the
+multi-step floor (the 4B Qwen student does), turning the family-generalization claim from partial
+to full. Tokenizers verified identical (vocab 100278). Conditions: base (seed 0), sft_only,
+distilled_olmo7, self_distill_olmo7, 3 seeds. Split: account A runs sft_only + distilled_olmo7
+(+ base), account B runs self_distill_olmo7. Expected cost ~5-7 h per account; must finish before
+the 2026-10-05 GPU cutoff.
+
+Decision rule for the paper: if sft_only clears the floor on chains 3+5, run the same crossed
+bootstrap as the main pair and report the pair in Sec. 4.5 alongside OLMo-1B. If it does not, the
+floor is a property of OLMo-2 at these sizes on this harness, and the Round-3 caveat stands.

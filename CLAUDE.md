@@ -193,6 +193,14 @@ new eval paths over longer contexts should do the same
   (2026-10-01); results + floor-effect caveat in `docs/EXPERIMENT_PLAN.md`
   "Round 3". The repo is now PUBLIC (made public 2026-10-01 so new Kaggle
   accounts can clone without a `GH_TOKEN`).
+- `18_olmo7b_pair.ipynb` — FOURTH pair, OLMo-2 again but larger
+  (student_olmo7=OLMo-2-1124-7B-Instruct, teacher_olmo13=OLMo-2-1124-13B-Instruct;
+  conditions base/sft_only/distilled_olmo7/self_distill_olmo7), added because
+  the 1B OLMo student sat at the chains-3/5 floor. Same worker:
+  `third_pair_worker.py --pair olmo7b` (default `--pair olmo1b` unchanged),
+  results under the `pair4_` prefix. Split across two accounts via the first
+  cell's `CONDITIONS`/`INCLUDE_BASE` (see the notebook's intro). Built
+  2026-10-02, not yet run.
 
 `10_check_batching.ipynb` is superseded (folded into 11/13/14/15's setup
 cells) — don't run it standalone.

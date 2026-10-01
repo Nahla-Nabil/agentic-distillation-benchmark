@@ -68,3 +68,34 @@ def test_models_config_has_this_pairs_three_entries_with_matching_lora_setup():
     assert models["teacher_self_olmo"]["hf_id"] == student["hf_id"]  # self-teacher = the student's own base
     assert models["teacher_olmo"]["hf_id"] != student["hf_id"]
     assert student["lora"]["r"] == 16
+
+
+def test_olmo7b_pair_uses_its_own_prefix_and_never_collides_with_the_1b_pair():
+    from adbench.evaluation.third_pair_worker import PAIRS
+
+    assert PAIRS["olmo7b"] == ("student_olmo7", "pair4")
+    assert result_path(1, "sft_only", "olmo7b") == "runs/v2-seed1/results/stages/pair4_sft_only.json"
+    assert result_path(1, "sft_only", "olmo7b") != result_path(1, "sft_only")
+    assert loss_log_repo_path(2, "distilled_olmo7", "olmo7b") == (
+        "runs/v2-seed2/results/training_logs/pair4_distilled_olmo7.jsonl"
+    )
+
+
+def test_default_pair_is_unchanged_so_existing_pair3_results_still_resolve():
+    from adbench.evaluation.third_pair_worker import DEFAULT_PAIR
+
+    assert DEFAULT_PAIR == "olmo1b"
+    assert result_path(0, "base") == "runs/v2-seed0/results/stages/pair3_base.json"
+
+
+def test_olmo7b_conditions_and_models_point_at_their_own_teachers():
+    cfg = load_experiment_config("configs/experiment.yaml")
+    d = resolve_training_config(cfg, "distilled_olmo7")
+    s = resolve_training_config(cfg, "self_distill_olmo7")
+    assert (d.kd.kd_weight, d.teacher_key) == (0.5, "teacher_olmo13")
+    assert (s.kd.kd_weight, s.teacher_key) == (0.5, "teacher_self_olmo7")
+    models = load_experiment_config("configs/models.yaml")
+    assert models["student_olmo7"]["hf_id"] == "allenai/OLMo-2-1124-7B-Instruct"
+    assert models["teacher_self_olmo7"]["hf_id"] == models["student_olmo7"]["hf_id"]
+    assert models["teacher_olmo13"]["hf_id"] == "allenai/OLMo-2-1124-13B-Instruct"
+    assert models["student_olmo7"]["lora"]["r"] == 16

@@ -16,6 +16,8 @@ entry for each pair repeats the relevant summary as a comment):
     vocab_size=151643 (len=151669), same special tokens, identical token-id sequences
     across code/JSON/tool-call/CJK samples.
     Qwen/Qwen3-8B vs Qwen/Qwen3-1.7B (second pair): same result, same tokenizer family.
+    allenai/OLMo-2-1124-13B-Instruct vs allenai/OLMo-2-1124-7B-Instruct (fourth pair, 2026-10-02):
+    same GPT-2-style BPE tokenizer as the third pair, vocab_size=100278, identical encodings.
     allenai/OLMo-2-1124-7B-Instruct vs allenai/OLMo-2-0425-1B-Instruct (third pair, a
     DIFFERENT model family from Qwen): identical GPT-2-style BPE tokenizer,
     vocab_size=100278, same special tokens (bos=eos=unk=<|endoftext|>, pad=<|pad|>),
