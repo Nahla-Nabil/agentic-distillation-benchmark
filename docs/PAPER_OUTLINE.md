@@ -81,6 +81,51 @@ Base-model and method citations to include but not build a Related Work paragrap
 (Qwen3 technical report, the teacher/student model family), [Hu22] (LoRA), [Dettmers23] (QLoRA) —
 cite in Section 3.1 (Method) where the models and training method are introduced, not here.
 
+### Second literature pass (2026-10-02): the closest prior work, and the scoped novelty claim
+
+Found by targeted web search; every entry below is marked UNVERIFIED in References until Nahla has
+opened the paper. This pass changes how the novelty must be stated.
+
+- **The "KD is mostly regularization" view already exists, outside LLM agents.** [Yuan20] show a
+  poorly trained teacher (and teacher-free soft targets) still improves the student, and argue the
+  regularization of soft targets matters as much as inter-class information (image
+  classification). [Stanton21] show that in self-distillation the student does not match the
+  teacher yet generalizes better, so KD "transfers very limited knowledge". [MasonWilliams25]
+  (arXiv, 22 setups, 9 architectures, 7 datasets) conclude KD acts primarily as a
+  "data-dependent regulariser" and report "asymmetric transfer of negative knowledge" (students
+  inherit teacher errors more readily than useful knowledge).
+- **The view is disputed for text.** [Sultan23] (EMNLP, text classification) find KD and label
+  smoothing push confidence in opposite directions and argue against KD-as-regularization. So the
+  question is genuinely open for language models, which is where this paper adds evidence.
+- **Capacity gap is a different mechanism.** [Cho19] and, for language models, [Busbridge25]
+  show a too-strong teacher can hurt a small student (capacity gap). Our weak-student harm appears
+  with a *self*-anchor (teacher = the student's own base, no capacity gap at all), so it cannot be
+  a capacity-gap effect. State this distinction explicitly: it is the cleanest argument that the
+  dial result is new.
+- **Anchoring during LLM fine-tuning is known as a forgetting control.** [YangSDFT24] (ACL 2024)
+  fine-tune on self-generated data to keep the model near its original distribution and reduce
+  catastrophic forgetting; [Biderman24] show LoRA "learns less and forgets less". Both frame
+  anchoring as a learning-vs-forgetting trade-off. Our dial shows the *sign* of the net effect on
+  the target task depends on the base model's own competence at that task.
+- **Agent distillation exists but has no self-distillation control.** [Kang25] (NeurIPS 2025)
+  distill full tool-using trajectories into 0.5-3B students; their design cannot separate teacher
+  knowledge from anchoring.
+
+**Scoped novelty statement (use this, not "first"):** prior work established the regularization
+view of KD in image and text classification [Yuan20], [Stanton21], [MasonWilliams25] and disputed
+it for text classification [Sultan23]; this study tests it in multi-step tool-use fine-tuning of
+LLMs with a self-distillation control, bounds the teacher-specific gain (≤ 6.2 points, one-sided
+95%), and shows the same anchor helps or harms depending on the student's own competence, an
+effect that the capacity-gap account [Cho19], [Busbridge25] does not explain because it appears
+with no external teacher. The weak-student failure mode (the base model's prose-instead-of-call
+behavior carried into the trained student) is a concrete LLM-agent instance of the "negative
+transfer" that [MasonWilliams25] describe.
+
+**Do not report `sft_ls` (label-smoothing control):** only 2 seeds, wildly unstable (chains 3+5:
+49.3 and 0.0), and the fp16 label-smoothing overflow fix in `losses.py` may postdate those runs.
+It cannot support or refute the [Yuan20]/[Sultan23] label-smoothing question; omit it or mention
+it only as an inconclusive control in Limitations.
+
 ## 3. Method (~1-1.25 pages)
 
 ### 3.1 Models and setup
@@ -217,6 +262,30 @@ draft time, not here.
 - **[OLMo25]** Team OLMo et al. (P. Walsh, L. Soldaini, D. Groeneveld, K. Lo, et al.), "2 OLMo 2
   Furious," in Proc. COLM, 2025. arXiv:2501.00656. (Third-pair model family — chosen for being
   fully open: weights, training data, and code all public, unlike Llama/Gemma which are gated.)
+
+Added in the second literature pass (2026-10-02) — all UNVERIFIED: found via web search, Nahla must
+open each paper and confirm the claim we attribute to it before it is cited:
+
+- **[Yuan20]** L. Yuan, F. E. H. Tay, G. Li, T. Wang, and J. Feng, "Revisiting Knowledge
+  Distillation via Label Smoothing Regularization," in Proc. CVPR, 2020.
+- **[Stanton21]** S. Stanton, P. Izmailov, et al., "Does Knowledge Distillation Really Work?," in
+  Proc. NeurIPS, 2021. arXiv:2106.05945. (Full author list to confirm.)
+- **[Cho19]** J. H. Cho and B. Hariharan, "On the Efficacy of Knowledge Distillation," in Proc.
+  ICCV, 2019, pp. 4793-4801.
+- **[Sultan23]** M. A. Sultan, "Knowledge Distillation ≈ Label Smoothing: Fact or Fallacy?," in
+  Proc. EMNLP, 2023. arXiv:2301.12609.
+- **[YangSDFT24]** Z. Yang, T. Pang, H. Feng, H. Wang, W. Chen, M. Zhu, and Q. Liu,
+  "Self-Distillation Bridges Distribution Gap in Language Model Fine-Tuning," in Proc. ACL, 2024,
+  pp. 1028-1043.
+- **[Biderman24]** D. Biderman et al., "LoRA Learns Less and Forgets Less," TMLR, 2024.
+  arXiv:2405.09673.
+- **[Busbridge25]** D. Busbridge, A. Shidani, F. Weers, J. Ramapuram, E. Littwin, and R. Webb,
+  "Distillation Scaling Laws," in Proc. ICML, 2025. arXiv:2502.08606.
+- **[Kang25]** "Distilling LLM Agent into Small Models with Retrieval and Code Tools," in Proc.
+  NeurIPS, 2025. arXiv:2505.17612. (Author list to confirm.)
+- **[MasonWilliams25]** I. Mason-Williams, G. Mason-Williams, and H. Yannakoudakis, "A Functional
+  Perspective on Knowledge Distillation in Neural Networks," arXiv:2510.12615, 2025 (rev. 2026).
+  Preprint, not peer-reviewed as far as found: cite as such.
 
 Two entries ([Zhou25], [Chen23]) need their full author lists confirmed from the paper itself
 before the reference list is finalized — the search gave the paper and arXiv id but not a
