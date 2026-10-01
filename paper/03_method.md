@@ -1,29 +1,45 @@
-# 3. Method
+# III. Methodology
 
-## 3.1 Models
+<!-- Revision status (2026-10-02): §A revised with Nahla and approved. §3.2 onward are the OLD
+first draft (written before docs/WRITING_GUIDE.md and docs/VOICE_PROFILE.md) and are being
+revised one section at a time. -->
 
-We study three teacher-student pairs. Two are from the Qwen3 family [Yang25] and vary model
-scale: the **main pair** distills Qwen3-14B (14.8B parameters) into Qwen3-4B-Instruct-2507 (4.0B
-parameters), a 3.7x compression, and the **second pair** distills Qwen3-8B (8.2B parameters) into
-Qwen3-1.7B (1.7B parameters), a 4.8x compression, testing whether the main pair's findings
-generalize to a weaker student. The **third pair** varies model *family* instead: OLMo-2-1124-7B-
-Instruct into OLMo-2-0425-1B-Instruct (AI2's fully open OLMo-2 [OLMo25] — a different
-architecture and training pipeline from Qwen, chosen over Llama/Gemma because those require a
-per-account license acceptance we could not obtain in time), a 7x compression, testing whether the
-findings are specific to Qwen's training recipe. All three students are fine-tuned with QLoRA
-[Dettmers23]: 4-bit-quantized frozen base weights with trainable low-rank adapters [Hu22] (rank
-16, alpha 16, dropout 0, applied to all seven linear projections in each transformer block —
-query/key/value/output and gate/up/down). All six models are loaded through Unsloth for 4-bit
-inference and training on a single NVIDIA T4 GPU. Teacher and student in each pair share an
-identical tokenizer, verified by exact vocabulary-size and token-id agreement on code, JSON, and
-CJK text samples (Qwen2Tokenizer, vocabulary 151,643, for both Qwen3 pairs; a GPT-2-style BPE
-tokenizer, vocabulary 100,278, for the OLMo-2 pair) — this guarantee is what makes logit-level KD
-(Sec. 3.2) valid without any vocabulary alignment step, for all three pairs. The third pair's
-untrained `base` fails all 121 held-out tasks outright (Sec. 4.5), unlike the two Qwen3 pairs'
-`base`, which succeeds on a majority of single-step tasks before any fine-tuning — consistent with
-OLMo-2's instruction tuning not including explicit function-calling data the way Qwen3's does; we
-flag this as a difference in starting capability between the families, not a setup error (Sec.
-4.5 reports the diagnostic that supports this reading).
+## A. Teacher–Student Pairs
+
+This study uses four teacher–student pairs from two model families (Table I). The main pair
+distills Qwen3-14B into Qwen3-4B-Instruct-2507 [Yang25]. The second pair keeps the same family and
+reduces the student to Qwen3-1.7B, with Qwen3-8B as teacher, to examine whether the findings depend
+on the student's starting ability. The third and fourth pairs use OLMo-2 [OLMo25], a family with a
+different architecture and training pipeline, so that the findings can be checked outside Qwen.
+OLMo-2 was selected because its weights, training data and code are fully open. Llama and Gemma
+models were not used because they require a per-account license request on Hugging Face, which
+prevents reproduction from public artifacts alone.
+
+TABLE I: TEACHER–STUDENT PAIRS
+
+| Pair | Teacher | Student | Ratio |
+|---|---|---|---|
+| Main | Qwen3-14B | Qwen3-4B-Instruct-2507 | 3.7× |
+| Second | Qwen3-8B | Qwen3-1.7B | 4.8× |
+| Third | OLMo-2-7B-Instruct | OLMo-2-1B-Instruct | 7× |
+| Fourth | OLMo-2-13B-Instruct | OLMo-2-7B-Instruct | 1.9× |
+
+<!-- TODO (Round 4, notebook 18): keep the Fourth row only if that run completes; otherwise
+change "four pairs" to "three pairs" above and drop the row. -->
+
+Every student is fine-tuned with QLoRA [Dettmers23]: the base weights stay frozen in 4-bit
+precision and only low-rank adapters [Hu22] are trained.
+
+**Adapter configuration:**
+- Rank 16, alpha 16, dropout 0
+- Applied to all seven linear projections in each block (q, k, v, o, gate, up, down)
+- Identical in every condition and every pair
+
+Logit-level distillation compares the teacher's and the student's next-token distributions token by
+token, which is meaningful only when both models share one vocabulary. For each pair, the
+tokenizers were checked for identical vocabulary size, special tokens and token ids on code, JSON,
+tool-call and non-Latin samples (Qwen3: 151,643 tokens; OLMo-2: 100,278 tokens), so no vocabulary
+alignment step is needed.
 
 ## 3.2 Conditions
 
