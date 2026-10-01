@@ -1,6 +1,6 @@
 # III. Methodology
 
-<!-- Revision status (2026-10-02): §A and §B revised with Nahla and approved. §3.2 onward are the OLD
+<!-- Revision status (2026-10-02): §A, §B and §C revised with Nahla and approved. §3.2 onward are the OLD
 first draft (written before docs/WRITING_GUIDE.md and docs/VOICE_PROFILE.md) and are being
 revised one section at a time. -->
 
@@ -84,21 +84,47 @@ self_distill_olmo / self_distill_olmo7. The one-epoch SFT recipe is sft_early; t
 recipes are sweeps lower_lr / lower_lr_1ep; label smoothing is sft_ls. Main-pair dial points:
 0.05, 0.2, 0.5, 0.8; second-pair dial points: 0.05, 0.1, 0.2, 0.5. -->
 
-## 3.3 Training data
+## C. Training Data
 
-Training examples are drawn from the Glaive function-calling v2 corpus [Qin23]-lineage synthetic
-data (single-tool, single-turn function-call examples; we did not use ToolLLM/ToolBench directly,
-noting the difference in scale and provenance). From the raw corpus we keep only examples whose
-tool name and argument-key signature match one of eight curated, deterministically-mockable tools
-(`calculate_bmi`, `calculate_tip`, `calculate_discount`, `calculate_age`, `calculate_distance`,
-`convert_currency`, `generate_random_number`, `get_stock_price`), capped at 100 examples per tool
-and split 80/20 train/test (640 train / 160 test), with the test split frozen at creation and
-never used for anything but final held-out checks. Two ablations vary this default: a
-**tool-diversity ablation** re-derives the same total 800-example subset from only the 2 or 4
-most-available of the eight tools (per-tool cap scaled up to hold total example count constant),
-and a **training-set-size ablation** takes seeded, nested subsamples of the default 640-example
-train split at 20 and 40 examples per tool (160 and 320 total), against the default 80/tool (640)
-as the upper end.
+All training examples come from the Glaive function-calling v2 corpus (Apache-2.0), which contains
+112,960 synthetic conversations. A raw example was kept only if it contains exactly one tool call,
+the tool belongs to a curated set of eight, and its argument names match that tool's most common
+argument signature. The eight tools were chosen because they are among the most frequent in the
+corpus and can be executed deterministically without external services, so every call can be
+checked exactly. Examples that use a different argument signature for the same tool were dropped
+rather than mapped, because the corpus names the same argument inconsistently (for example,
+origin/destination and start_location/end_location for calculate_distance). Multi-step examples
+were not used for training: only 8 of the 112,960 conversations contain two or more consecutive
+tool calls, so the corpus is effectively single-step, and multi-step evaluation tasks are composed
+separately (Section D).
+
+TABLE II: FILTERING OF THE RAW CORPUS
+
+| Reason | Examples |
+|---|---|
+| No tool call | 49,742 |
+| Tool outside the curated set | 29,073 |
+| More than one call | 19,583 |
+| Non-canonical arguments | 3,437 |
+| Unparseable call | 999 |
+| **Kept** | **10,126** |
+
+From the kept pool, 100 examples per tool were sampled with a fixed seed (800 in total) and split
+80/20 within each tool, giving 640 training and 160 held-out examples. The two scarcest tools
+(get_stock_price with 183 kept examples, calculate_distance with 189) limit how far this balanced
+subset can grow, which is why the data-size experiment scales down rather than up.
+
+Two ablations change the training set while keeping everything else fixed:
+- **Tool diversity:** the same 800 examples drawn from only the 2 or 4 most available tools (400 or
+  200 per tool).
+- **Training-set size:** seeded, nested subsets of the 640-example training split with 20 or 40
+  examples per tool (160 or 320 examples).
+
+None of the eight training tools appears in the evaluation tasks (Section D).
+
+<!-- Sources: drop counts and per-tool kept counts are printed by data/prepare.py (identical in
+every notebook log, e.g. notebook 17/18 "prepare.py summary"); "8 of 112,960 multi-step" is from
+configs/data.yaml's header comment. -->
 
 ## 3.4 Evaluation harness
 
