@@ -1,6 +1,6 @@
 # III. Methodology
 
-<!-- Revision status (2026-10-02): §A revised with Nahla and approved. §3.2 onward are the OLD
+<!-- Revision status (2026-10-02): §A and §B revised with Nahla and approved. §3.2 onward are the OLD
 first draft (written before docs/WRITING_GUIDE.md and docs/VOICE_PROFILE.md) and are being
 revised one section at a time. -->
 
@@ -41,39 +41,48 @@ tokenizers were checked for identical vocabulary size, special tokens and token 
 tool-call and non-Latin samples (Qwen3: 151,643 tokens; OLMo-2: 100,278 tokens), so no vocabulary
 alignment step is needed.
 
-## 3.2 Conditions
+## B. Training Conditions
 
-Every condition trains the same student model on the same data with the same LoRA configuration
-and differs *only* in its loss function, so that any measured difference in downstream behavior
-is attributable to the loss, not to a confound in the training recipe:
+All conditions train the same student on the same data with the same adapter configuration and
+differ only in the loss function, so that any difference in behaviour can be attributed to the loss
+rather than to the training recipe.
 
-- **base** — no fine-tuning (a freshly-initialized, mathematically-inert LoRA adapter is attached
-  and saved immediately, so it loads through the identical code path as every trained condition).
-- **sft_only** — standard supervised fine-tuning: cross-entropy loss on the assistant's
-  `<tool_call>{...}</tool_call>` completion only (the system prompt and user turn are masked out
-  of the loss).
-- **distilled** — combined loss, $L = w_{\text{sft}} L_{\text{CE}} + w_{\text{kd}} L_{\text{KD}}$,
-  where $L_{\text{KD}}$ is the standard temperature-softened KL divergence between student and
-  teacher next-token distributions [Hinton15] at temperature $T=2$, computed only over the
-  completion span (the same mask as sft_only). Default weights $w_{\text{sft}}{=}w_{\text{kd}}{=}0.5$.
-- **self_distill** (main pair) / **self_distill_small** (second pair) / **self_distill_olmo**
-  (third pair) — identical loss to `distilled`, but the "teacher" is a frozen copy of the
-  student's *own* pre-fine-tuning checkpoint, never updated during training. At step 0 the
-  self-teacher's logits equal the student's own, so this condition isolates the KD loss term's
-  regularizing/anchoring effect from any information the teacher's own extra training could
-  contribute — cf. Born-Again Networks [Furlanello18] and self-distillation-as-regularization
+- **Base:** no fine-tuning. A freshly initialised adapter is attached and saved without training,
+  so this condition is loaded through the same code path as every trained condition.
+- **SFT:** standard supervised fine-tuning. Cross-entropy is computed only on the assistant's
+  tool-call completion; the system prompt and the user turn are masked.
+- **Distilled:** cross-entropy combined with a distillation term,
+
+  L = w_sft · L_CE + w_kd · L_KD,   (1)
+
+  where L_KD is the temperature-softened Kullback–Leibler divergence between the teacher's and the
+  student's next-token distributions [Hinton15], computed on the same completion tokens as L_CE.
+  The default setting is T = 2 and w_sft = w_kd = 0.5.
+- **Self-distilled:** the same loss as Distilled, but the teacher is a frozen copy of the student
+  itself before fine-tuning. At the first step its distribution equals the student's, so this term
+  carries no information from a stronger model; it can only hold the student close to where it
+  started. This condition separates the anchoring effect of the distillation loss from the
+  knowledge of a larger teacher, following earlier self-distillation work [Furlanello18],
   [Zhang19], [Mobahi20].
-- **distilled_8b** / **distilled_olmo** — for the second and third pairs respectively: KD from
-  that pair's larger external teacher (Qwen3-8B / OLMo-2-7B-Instruct), the pair-specific analogue
-  of `distilled`.
-- Two secondary controls on the main pair reported alongside the primary comparison:
-  **sft_early** (SFT with a single epoch instead of three, to check whether SFT's behavior is an
-  overfitting artifact of training length) and **sft_ls** (SFT with label smoothing 0.1, a loss-
-  level regularizer that does not require a teacher, as an alternative anchoring mechanism).
 
-For the anchoring-strength experiments (Sec. 4.3), the same self-distillation loss is retrained
-at five KD weights — 0, 0.05, 0.1 (second pair only), 0.2, 0.5 (default), 0.8 — holding every
-other hyperparameter fixed, so that weight is the only variable across that sweep.
+To check that the SFT baseline is not simply under-tuned, three further SFT recipes are trained on
+the main pair: one epoch instead of three, a lower learning rate (5×10⁻⁵ instead of 2×10⁻⁴), and
+the lower rate with one epoch. A label-smoothing control was also run but is not reported, because
+only two seeds completed and its training was unstable.
+
+To measure how the strength of the anchor affects the outcome, Self-distilled is retrained with
+w_kd ∈ {0.05, 0.1, 0.2, 0.5, 0.8} and w_sft = 1 − w_kd on the main and second pairs; w_kd = 0 is SFT.
+
+**Shared hyperparameters:**
+- Learning rate 2×10⁻⁴, cosine schedule, 3% warm-up, no weight decay
+- 3 epochs, batch size 2 with 4 accumulation steps (effective batch 8), 240 optimiser steps
+- Five seeds (0–4) for the main comparison, three seeds for every other experiment
+
+<!-- Code-name mapping (not for the paper): SFT = sft_only; Distilled = distilled / distilled_8b /
+distilled_olmo / distilled_olmo7; Self-distilled = self_distill / self_distill_small /
+self_distill_olmo / self_distill_olmo7. The one-epoch SFT recipe is sft_early; the lower-rate
+recipes are sweeps lower_lr / lower_lr_1ep; label smoothing is sft_ls. Main-pair dial points:
+0.05, 0.2, 0.5, 0.8; second-pair dial points: 0.05, 0.1, 0.2, 0.5. -->
 
 ## 3.3 Training data
 
