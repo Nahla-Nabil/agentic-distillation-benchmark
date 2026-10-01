@@ -18,7 +18,12 @@ inference and training on a single NVIDIA T4 GPU. Teacher and student in each pa
 identical tokenizer, verified by exact vocabulary-size and token-id agreement on code, JSON, and
 CJK text samples (Qwen2Tokenizer, vocabulary 151,643, for both Qwen3 pairs; a GPT-2-style BPE
 tokenizer, vocabulary 100,278, for the OLMo-2 pair) — this guarantee is what makes logit-level KD
-(Sec. 3.2) valid without any vocabulary alignment step, for all three pairs.
+(Sec. 3.2) valid without any vocabulary alignment step, for all three pairs. The third pair's
+untrained `base` fails all 121 held-out tasks outright (Sec. 4.5), unlike the two Qwen3 pairs'
+`base`, which succeeds on a majority of single-step tasks before any fine-tuning — consistent with
+OLMo-2's instruction tuning not including explicit function-calling data the way Qwen3's does; we
+flag this as a difference in starting capability between the families, not a setup error (Sec.
+4.5 reports the diagnostic that supports this reading).
 
 ## 3.2 Conditions
 
@@ -99,4 +104,8 @@ this crossed design, rather than a per-seed-only bootstrap, because both seed (t
 randomness) and template (task-design randomness) are independent sources of variance in our
 setup, and a per-seed-only interval would understate the true uncertainty. All statistics in
 Sec. 4 are computed on chains of length 3 and 5 pooled (chain-1 tasks are near-ceiling for every
-condition and are reported separately, Fig. 2, rather than folded into significance tests).
+condition and are reported separately, Fig. 2, rather than folded into significance tests), except
+for the third (OLMo-2) pair, where chains 3 and 5 are at floor (~0%) for every condition including
+`sft_only` — a capability ceiling at this model size and training budget, not a KD-specific
+result — so that pair's contribution is reported on the overall/chain-1 metric only (Sec. 4.5),
+with no bootstrap test run where there is no variance to test.
