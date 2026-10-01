@@ -236,3 +236,34 @@ All numbers below are point estimate [95% CI], bootstrap two-sided p. Positive =
   independently proven.
 
 Analysis script: scratchpad `bootstrap_all.py` (to be moved into `scripts/` once figures are final).
+
+## Round 3 (notebook 17: third model pair, OLMo-2) — COMPLETE (2026-10-01)
+
+Final numbers, 3 seeds each (base is seed-0-only, deterministic untrained adapter):
+
+| condition | overall % (SD) | chains 3+5 % (SD) |
+|---|---|---|
+| base | 0.0 | 0.0 |
+| sft_only | 31.7 (0.5) | 0.4 (0.8) |
+| distilled_olmo | 4.1 (0.0) | 0.0 (0.0) |
+| self_distill_olmo | 10.7 (0.0) | 0.0 (0.0) |
+
+Ordering replicates the core finding cleanly: base < distilled_olmo < self_distill_olmo << sft_only
+(both KD variants stay near base; self_distill ≥ distilled, i.e. no teacher-specific advantage
+here either — consistent with every other pair in this project).
+
+**Important caveat, state this plainly in the paper**: chains 3+5 are ~0% for EVERY condition
+including sft_only — a floor effect, not a KD-specific failure. OLMo-2-0425-1B-Instruct, at this
+LoRA budget (r=16, 640 examples), appears unable to execute multi-step tool-call planning at all,
+regardless of training recipe (base chain1 is also 0%, unlike both Qwen pairs where base succeeds
+on chain1). This pair therefore cannot be used for the chains-3+5 statistics the rest of the paper
+is built on (no variance to test) — its contribution is the OVERALL/chain-1 result, which still
+cleanly replicates the base/KD-anchors-weak/SFT-wins ordering across a third, architecturally
+unrelated model family. Report this as a genuine, interesting boundary condition (a capability
+floor below which training recipe stops mattering), not a bug — base's failure mode is identical
+to the Qwen pairs' pattern (100% "produced a final answer instead of a tool call"; see
+`third_pair_worker.py` diagnostics pulled 2026-09-28/10-01), just at a lower absolute capability
+level, plausibly because OLMo-2's instruction tuning (Tulu-style SFT+DPO) does not include
+explicit function-calling data the way Qwen3's does, so even single-step learning is harder.
+
+**All three model pairs are now fully evaluated. No further GPU work is planned.**
