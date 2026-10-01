@@ -39,9 +39,10 @@ edit under `paper/`. The rules that matter most for this paper:
   implications → limitations → future work → closing.
 - **Conclusion:** what we found / why it matters / what next; no new results.
 - **Abstract:** no citations, no interpretation; written last.
-- **Voice:** calibrate to a real writing sample of Nahla's (ask her which of her
-  past papers is genuinely her own voice) and avoid the AI-cliché list in §3 of
-  the guide. Never claim "first"/"novel"; scope novelty against
+- **Voice:** follow `docs/VOICE_PROFILE.md` (derived from two of her own IEEE
+  papers; also resolves where her style and the guide disagree, e.g. present
+  tense for describing the method) and avoid the AI-cliché list in §3 of the
+  guide. No em-dashes in paper prose. Never claim "first"/"novel"; scope novelty against
   [Furlanello18]/[Zhang19]/[Mobahi20] as in `docs/PAPER_OUTLINE.md` §2.
 - **Numbers:** every number in `paper/` must trace to `docs/EXPERIMENT_PLAN.md`
   (or the HF results it summarizes); never round in a way that changes meaning.
