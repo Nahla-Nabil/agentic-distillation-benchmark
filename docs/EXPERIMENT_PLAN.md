@@ -281,3 +281,24 @@ the 2026-10-05 GPU cutoff.
 Decision rule for the paper: if sft_only clears the floor on chains 3+5, run the same crossed
 bootstrap as the main pair and report the pair in Sec. 4.5 alongside OLMo-1B. If it does not, the
 floor is a property of OLMo-2 at these sizes on this harness, and the Round-3 caveat stands.
+
+## Upper bound on the teacher-specific gain (2026-10-02, CPU only)
+
+distilled − self_distill, main pair, 5 seeds, chains 3+5, crossed seeds × templates bootstrap
+(20,000 resamples). Script: scratchpad `teacher_bound.py` (to move into `scripts/`).
+
+| task pool | diff | 95% CI | p | one-sided 95% upper bound | TOST ±5 | TOST ±7.5 |
+|---|---|---|---|---|---|---|
+| primary 121 tasks (15 templates) | +4.8 | [−5.9, +16.0] | .39 | +14.1 | no | no |
+| extended 158 tasks (32 templates) | +1.7 | [−1.6, +5.0] | .31 | +4.4 | yes | yes |
+| combined 279 tasks (47 templates) | +2.7 | [−1.4, +7.0] | .20 | **+6.2** | no | yes |
+
+For scale, the anchoring effect on the same combined pool: self_distill − sft_only (default) =
++12.7 [+0.5, +28.3].
+
+**How to word it in the paper:** lead with the margin-free statement — on the combined 279-task
+pool the data exclude a teacher-specific gain larger than 6.2 points (one-sided 95% bound), less
+than half the point estimate of the anchoring effect itself (+12.7). Report TOST only as
+supplementary and say plainly that the margins were chosen after seeing the data (no margin was
+pre-registered), so the equivalence result is descriptive, not confirmatory. The 121-task set alone
+is too small to bound the gain tightly (+14.1); say so.
