@@ -8,10 +8,43 @@ argument; read this for "where things are and what's in flight."
 **2026-10-17**. Self-imposed cutoff for new GPU experiments: **2026-10-05**,
 to leave ~12 days for writing. **The plan of record is `docs/EXPERIMENT_PLAN.md`**
 (thesis, claim/evidence table, weaknesses -> experiments, round schedule, and a
-full crossed-bootstrap statistics pass) — read it first. All planned GPU
-experiments are DONE as of 2026-09-28; the project is now in the writing phase.
-**`docs/PAPER_OUTLINE.md`** has the section-by-section outline, figure/table
-inventory, and drafting schedule.
+full crossed-bootstrap statistics pass) — read it first. **All GPU experiments
+are DONE as of 2026-10-01** (three model pairs incl. OLMo-2); the project is in
+the writing phase. **`docs/PAPER_OUTLINE.md`** has the section-by-section
+outline, figure/table inventory, and drafting schedule.
+
+## Writing the paper — read `docs/WRITING_GUIDE.md` before touching `paper/`
+
+`docs/WRITING_GUIDE.md` is Nahla's own instruction file for AI models helping
+with papers (copied from her Downloads, 2026-10-02). It is binding for every
+edit under `paper/`. The rules that matter most for this paper:
+
+- **Role:** editorial assistant, not ghostwriter. Nahla owns the ideas and the
+  voice. Work **one section at a time**: explain the section to her in
+  Levantine Arabic (what it says, why, which number comes from where), get her
+  understanding/changes, THEN write or revise. She explicitly wants to
+  understand every part — never batch-write several sections unreviewed.
+- **Track B (IMRAD)**: Title → Abstract → Introduction → Methods → Results →
+  Discussion → (Limitations/Conclusion) → References. Draft order: Methods →
+  Results → Discussion → Introduction → Conclusion → Abstract → Title.
+- **Methods:** simple past tense; primary and secondary endpoints stated
+  precisely (primary = multi-step success on chains 3+5 of the 121-task
+  unseen-tool set); software/hardware named; statistics paragraph last.
+- **Results:** report only — NO interpretation, no "surprisingly/interestingly",
+  simple past, same order and matching subheadings as Methods; don't restate in
+  prose what a table shows. Interpretation ("anchoring, not knowledge") belongs
+  in Discussion.
+- **Discussion order:** findings recap → interpretation within the data →
+  comparison with literature → what is new → negative results plainly →
+  implications → limitations → future work → closing.
+- **Conclusion:** what we found / why it matters / what next; no new results.
+- **Abstract:** no citations, no interpretation; written last.
+- **Voice:** calibrate to a real writing sample of Nahla's (ask her which of her
+  past papers is genuinely her own voice) and avoid the AI-cliché list in §3 of
+  the guide. Never claim "first"/"novel"; scope novelty against
+  [Furlanello18]/[Zhang19]/[Mobahi20] as in `docs/PAPER_OUTLINE.md` §2.
+- **Numbers:** every number in `paper/` must trace to `docs/EXPERIMENT_PLAN.md`
+  (or the HF results it summarizes); never round in a way that changes meaning.
 
 ## What this project is
 
@@ -155,7 +188,10 @@ new eval paths over longer contexts should do the same
   vocab 100278), and Unsloth-supported. Same two-phase pattern, same
   `third_pair_worker.py` (evaluates at 4096 ctx and uploads loss logs from
   the start — lessons from `second_pair_worker.py`'s history already baked
-  in, so this pair should not need the same 2048->4096 re-run).
+  in, so this pair should not need the same 2048->4096 re-run). **Complete**
+  (2026-10-01); results + floor-effect caveat in `docs/EXPERIMENT_PLAN.md`
+  "Round 3". The repo is now PUBLIC (made public 2026-10-01 so new Kaggle
+  accounts can clone without a `GH_TOKEN`).
 
 `10_check_batching.ipynb` is superseded (folded into 11/13/14/15's setup
 cells) — don't run it standalone.
@@ -168,9 +204,14 @@ seeds 0-4 done on the main pipeline + extended set + BFCL; tool-diversity
 ablation complete (12/12 jobs, KD flat across 2/4/8 tools); second model pair
 complete (KD ~ base for the small student); notebook 16's sweep rounds 1-2
 complete with a full crossed-bootstrap pass (23 contrasts); notebook 17 (third
-model pair, OLMo-2, a different family) built and not yet run. **The project
-is in the writing phase** — `paper/` has drafted sections (Method done),
-`docs/PAPER_OUTLINE.md` has the plan. If you're picking this repo up cold,
+model pair, OLMo-2) complete — ordering replicates (base 0 < distilled_olmo 4.1
+< self_distill_olmo 10.7 < sft_only 31.7 overall %) but chains 3+5 are at floor
+(~0%) for every condition, so that pair supports only the overall/chain-1
+claim. **The project is in the writing phase** — `paper/03_method.md` and
+`paper/04_results.md` are first drafts written BEFORE `docs/WRITING_GUIDE.md`
+was adopted and need a revision pass (Methods to past tense + explicit
+endpoints + software; Results stripped of interpretation, which moves to
+Discussion). `docs/PAPER_OUTLINE.md` has the plan. If you're picking this repo up cold,
 check `results/` and the HF repo's `runs/v2-seed*/results/stages/*.done`
 markers for what's actually finished before assuming anything above is
 current.
