@@ -52,19 +52,27 @@ EVAL_MAX_SEQ_LENGTH = 4096
 _FIRST_RUN_CONDITIONS = ("base", "sft_only")
 
 
-def result_path(seed: int, condition: str, rerun_4k: bool = False) -> str:
+def result_path(seed: int, condition: str, rerun_4k: bool = False, no_think: bool = False) -> str:
     """`rerun_4k` (added 2026-10-02): base/sft_only were first evaluated at 2048 under "pair2_";
     their 4096-context re-run goes to "pair2c_" so the first run stays on Hugging Face as a trace.
-    Teacher conditions already ran at 4096 ("pair2b_") and are unaffected by the flag."""
-    if condition in _FIRST_RUN_CONDITIONS:
+    Teacher conditions already ran at 4096 ("pair2b_") and are unaffected by the flag.
+
+    `no_think` (added 2026-10-03): every condition re-run with Qwen3's thinking mode off in both
+    training and eval (enable_thinking=False, see run_eval.make_harness_model_fn) goes to "pair2t_".
+    Before that fix the hybrid Qwen3-1.7B student opened replies with a <think> block that could use
+    up the 256-token budget, so all earlier pair2/2b/2c numbers are a thinking-mode result."""
+    if no_think:
+        prefix = "pair2t"
+    elif condition in _FIRST_RUN_CONDITIONS:
         prefix = "pair2c" if rerun_4k else "pair2"
     else:
         prefix = "pair2b"
     return f"runs/v2-seed{seed}/results/stages/{prefix}_{condition}.json"
 
 
-def loss_log_repo_path(seed: int, condition: str) -> str:
-    return f"runs/v2-seed{seed}/results/training_logs/pair2_{condition}.jsonl"
+def loss_log_repo_path(seed: int, condition: str, no_think: bool = False) -> str:
+    prefix = "pair2t" if no_think else "pair2"
+    return f"runs/v2-seed{seed}/results/training_logs/{prefix}_{condition}.jsonl"
 
 
 def summarize_loss_log(entries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -99,6 +107,8 @@ def main() -> None:
     parser.add_argument("--models-config", default="configs/models.yaml")
     parser.add_argument("--rerun-4k", action="store_true",
                         help="save base/sft_only under pair2c_ (their 4096-context re-run)")
+    parser.add_argument("--no-think", action="store_true",
+                        help="save every condition under pair2t_ (re-run with Qwen3 thinking mode off)")
     args = parser.parse_args()
 
     token = os.environ.get("HF_TOKEN")
@@ -125,7 +135,7 @@ def main() -> None:
     glaive_train_path = REPO_ROOT / "data" / "splits" / "train.jsonl"  # the main pipeline's own split, unmodified
 
     def already_done(seed: int, condition: str) -> bool:
-        return api.file_exists(repo_id=args.repo, filename=result_path(seed, condition, args.rerun_4k), repo_type="model")
+        return api.file_exists(repo_id=args.repo, filename=result_path(seed, condition, args.rerun_4k, args.no_think), repo_type="model")
 
     def evaluate(seed: int, condition: str) -> list[dict[str, Any]]:
         if not glaive_train_path.exists():
@@ -168,7 +178,7 @@ def main() -> None:
     def upload_loss_log(seed: int, condition: str, log_path: Path) -> None:
         try:
             api.upload_file(
-                path_or_fileobj=str(log_path), path_in_repo=loss_log_repo_path(seed, condition),
+                path_or_fileobj=str(log_path), path_in_repo=loss_log_repo_path(seed, condition, args.no_think),
                 repo_id=args.repo, repo_type="model", commit_message=f"second-pair loss log seed {seed} {condition}",
             )
         except Exception as e:  # noqa: BLE001 — a diagnostic; never lose the eval result over it
@@ -177,7 +187,7 @@ def main() -> None:
     def save(seed: int, condition: str, rows: list[dict[str, Any]]) -> None:
         local = out_dir / f"seed{seed}_{condition}.json"
         local.write_text(json.dumps(rows), encoding="utf-8")
-        path = result_path(seed, condition, args.rerun_4k)
+        path = result_path(seed, condition, args.rerun_4k, args.no_think)
         for attempt in range(1, 4):
             try:
                 api.upload_file(

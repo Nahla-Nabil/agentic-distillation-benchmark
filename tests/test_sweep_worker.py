@@ -82,3 +82,15 @@ def test_data_scale_results_never_collide_with_full_data_results():
     assert result_path(0, "main", "baseline@n20", "sft_only") != result_path(0, "main", "baseline", "sft_only")
     assert result_path(0, "main", "baseline@n20", "sft_only") != result_path(0, "main", "baseline@n40", "sft_only")
     assert parse_sweep_jobs("0:main:baseline@n20:sft_only") == [(0, "main", "baseline@n20", "sft_only")]
+
+
+def test_smallnt_is_the_small_student_under_its_own_path():
+    from adbench.evaluation.sweep_worker import STUDENT_KEYS
+
+    assert STUDENT_KEYS["smallnt"] == STUDENT_KEYS["small"] == "student_small"
+    assert parse_sweep_jobs("0:smallnt:sft_vheavy:self_distill_small") == [
+        (0, "smallnt", "sft_vheavy", "self_distill_small")
+    ]
+    assert result_path(0, "smallnt", "sft_vheavy", "self_distill_small") != result_path(
+        0, "small", "sft_vheavy", "self_distill_small"
+    )

@@ -68,6 +68,13 @@ def make_harness_model_fn(model, tokenizer, max_new_tokens: int = 256) -> ModelF
     like what the model was fine-tuned on), generates, and decodes ONLY the
     newly-generated tokens — not the echoed-back prompt, which
     model.generate() includes in its output by HF convention.
+
+    `enable_thinking=False` (added 2026-10-03): hybrid Qwen3 checkpoints (Qwen3-1.7B student,
+    Qwen3-8B/14B teachers) otherwise open every reply with a <think> block, which on multi-step
+    chains can use up the whole max_new_tokens budget before any tool call. Templates without that
+    variable ignore it: verified byte-identical prompts for Qwen3-4B-Instruct-2507 and every OLMo-2
+    model used here, so main-pair and OLMo results are unaffected. Must match
+    training/train.py::format_training_example and batching.BatchedModelFn.
     """
 
     # Greedy decoding and no default max_length, set once on the generation
@@ -78,7 +85,7 @@ def make_harness_model_fn(model, tokenizer, max_new_tokens: int = 256) -> ModelF
         import torch
 
         prompt_text = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
+            messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
         )
         encoded = tokenizer(prompt_text, return_tensors="pt").to(model.device)
         with torch.no_grad():

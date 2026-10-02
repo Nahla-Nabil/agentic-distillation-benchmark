@@ -369,7 +369,7 @@ class _StubTokenizer:
     def _token_id(self, word: str) -> int:
         return self._vocab.setdefault(word, len(self._vocab) + 1)
 
-    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False):
+    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False, **kwargs):
         parts = [f"<{m['role']}> {m['content']} </{m['role']}>" for m in messages]
         text = " ".join(parts)
         if add_generation_prompt:
@@ -446,7 +446,7 @@ def test_format_training_example_different_tools_use_only_their_own_tool_in_syst
             super().__init__()
             self.last_prompt_text = None
 
-        def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False):
+        def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False, **kwargs):
             text = super().apply_chat_template(messages, tokenize, add_generation_prompt)
             if add_generation_prompt:
                 self.last_prompt_text = text
@@ -473,7 +473,7 @@ def test_format_training_example_drops_the_empty_think_block_templates_add():
         # Mirrors the real Qwen3 template's shape: the generation prompt ends
         # in a newline, and a finished assistant turn is that same prompt
         # followed directly by the empty think block, then the content.
-        def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False):
+        def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False, **kwargs):
             if add_generation_prompt:
                 return super().apply_chat_template(messages, tokenize, True) + "\n"
             if messages[-1]["role"] == "assistant":

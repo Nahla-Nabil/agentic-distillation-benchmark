@@ -41,7 +41,10 @@ from adbench.evaluation.worker_utils import run_jobs, split_jobs  # noqa: F401 -
 
 DEFAULT_REPO = "NahlaNabil/adbench-run"
 TASK_SET = "unseen_tools"
-STUDENT_KEYS = {"main": "student", "small": "student_small"}
+# "smallnt" (added 2026-10-03) = the small pair re-run after thinking mode was turned off in training
+# and eval (run_eval.make_harness_model_fn); a separate name so the earlier "small" files, which are a
+# thinking-mode result, stay on Hugging Face and are never mistaken for the re-run.
+STUDENT_KEYS = {"main": "student", "small": "student_small", "smallnt": "student_small"}
 EVAL_MAX_SEQ_LENGTH = 4096  # same reason as second_pair_worker: prose-answering models overflow 2048
 
 
@@ -103,6 +106,8 @@ def main() -> None:
     parser.add_argument("--repo", default=os.environ.get("ADBENCH_HF_REPO", DEFAULT_REPO))
     parser.add_argument("--experiment-config", default="configs/experiment.yaml")
     parser.add_argument("--models-config", default="configs/models.yaml")
+    parser.add_argument("--with-ext", action="store_true",
+                        help="also evaluate each checkpoint on the extended set (rows tagged unseen_tools_ext)")
     args = parser.parse_args()
 
     token = os.environ.get("HF_TOKEN")
@@ -112,7 +117,9 @@ def main() -> None:
     from huggingface_hub import HfApi
 
     from adbench.data.prepare import read_jsonl, subsample_per_tool, write_jsonl
-    from adbench.evaluation.run_eval import load_condition_model, make_harness_model_fn, run_harness_eval_for_condition
+    from adbench.evaluation.run_eval import (
+        load_condition_model, make_harness_model_fn, run_ext_eval_for_condition, run_harness_eval_for_condition,
+    )
     from adbench.harness.tools import build_demo_registry
     from adbench.training.train import (
         REPO_ROOT, free_gpu_memory, load_experiment_config, loss_log_path, train_condition,
@@ -176,6 +183,10 @@ def main() -> None:
                 condition, model_fn, harness["chain_lengths"], registry, harness["max_retries_per_step"],
                 task_set=TASK_SET,
             )
+            if args.with_ext:
+                eval_rows += run_ext_eval_for_condition(
+                    condition, model_fn, harness["chain_lengths"], harness["max_retries_per_step"],
+                )
         finally:
             del model
             gc.collect()

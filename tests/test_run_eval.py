@@ -45,7 +45,7 @@ class _StubTokenizer:
             self._reverse[idx] = word
         return self._vocab[word]
 
-    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False):
+    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False, **kwargs):
         parts = [f"<{m['role']}> {m['content']} </{m['role']}>" for m in messages]
         text = " ".join(parts)
         if add_generation_prompt:

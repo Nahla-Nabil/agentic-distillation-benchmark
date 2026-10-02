@@ -153,7 +153,9 @@ def make_batch_generate_fn(model, tokenizer, max_new_tokens: int = 256):
         started = time.monotonic()
 
         prompts = [
-            tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
+            )
             for messages in batch_messages
         ]
         previous_side = getattr(tokenizer, "padding_side", "right")

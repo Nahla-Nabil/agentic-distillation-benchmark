@@ -309,12 +309,14 @@ def format_training_example(record: dict[str, Any], tokenizer, tool_registry) ->
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_message},
     ]
+    # enable_thinking=False: same prompt format eval uses (run_eval.make_harness_model_fn); a no-op
+    # for non-hybrid templates (Qwen3-4B-Instruct-2507, OLMo-2), see that function's docstring.
     prompt_text = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
+        messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
     )
     full_text = tokenizer.apply_chat_template(
         [*messages, {"role": "assistant", "content": assistant_completion}],
-        tokenize=False, add_generation_prompt=False,
+        tokenize=False, add_generation_prompt=False, enable_thinking=False,
     )
     # Some Qwen3 chat templates render a finished assistant turn as an empty
     # <think></think> block followed by the content, but never put that block in the

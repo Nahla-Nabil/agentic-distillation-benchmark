@@ -66,3 +66,16 @@ def test_rerun_4k_moves_only_base_and_sft_only_to_pair2c():
     assert result_path(0, "base", rerun_4k=True) == "runs/v2-seed0/results/stages/pair2c_base.json"
     assert result_path(1, "sft_only") == "runs/v2-seed1/results/stages/pair2_sft_only.json"  # default unchanged
     assert result_path(2, "distilled_8b", rerun_4k=True) == result_path(2, "distilled_8b")  # already 4096
+
+
+def test_no_think_rerun_moves_every_condition_to_pair2t():
+    from adbench.evaluation.second_pair_worker import loss_log_repo_path
+
+    for condition in ("base", "sft_only", "distilled_8b", "self_distill_small"):
+        assert result_path(1, condition, no_think=True) == f"runs/v2-seed1/results/stages/pair2t_{condition}.json"
+        # no_think wins over rerun_4k: the thinking-off re-run is its own run
+        assert result_path(1, condition, rerun_4k=True, no_think=True).endswith(f"pair2t_{condition}.json")
+    assert loss_log_repo_path(0, "sft_only", no_think=True).endswith("training_logs/pair2t_sft_only.jsonl")
+    # defaults unchanged
+    assert result_path(0, "base") == "runs/v2-seed0/results/stages/pair2_base.json"
+    assert loss_log_repo_path(0, "sft_only").endswith("training_logs/pair2_sft_only.jsonl")
