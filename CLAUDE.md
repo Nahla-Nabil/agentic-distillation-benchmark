@@ -85,7 +85,7 @@ full framing.
 - `configs/` — `data.yaml`, `models.yaml` (student/teacher pairs, LoRA), `experiment.yaml`
   (conditions list, training hyperparameters, harness settings).
 - `notebooks/` — Kaggle-run pipelines, see "Notebooks" below.
-- `tests/` — everything not needing a GPU is unit-tested (currently 478
+- `tests/` — everything not needing a GPU is unit-tested (currently 480
   tests). Anything touching Unsloth/real model weights is "reviewed by
   reading," not tested locally — flagged as such in the relevant module's
   docstring.

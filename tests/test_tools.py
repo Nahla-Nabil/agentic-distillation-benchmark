@@ -364,3 +364,23 @@ def test_generate_random_number_min_gte_max_raises():
     registry = build_glaive_registry()
     with pytest.raises(ToolArgumentError):
         registry.call("generate_random_number", {"min": 100, "max": 1})
+
+
+# --- wrong argument TYPES from the model (notebook 18 crash, 2026-10-02) ---
+
+def test_list_where_string_expected_is_a_tool_argument_error():
+    # OLMo-7B sent city=[...]; the tool body raised AttributeError and crashed the worker.
+    registry = build_demo_registry()
+    with pytest.raises(ToolArgumentError, match="AttributeError"):
+        registry.call("get_weather", {"city": ["Paris"]})
+
+
+def test_harness_errors_from_tool_body_pass_through_unchanged():
+    def boom():
+        raise ToolExecutionError("service down")
+
+    registry = ToolRegistry()
+    registry.register(ToolSpec(name="boom", description="", parameters_schema={}, fn=boom))
+    with pytest.raises(ToolExecutionError) as info:
+        registry.call("boom", {})
+    assert type(info.value) is ToolExecutionError

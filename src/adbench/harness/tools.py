@@ -41,6 +41,7 @@ from datetime import date
 from typing import Any
 
 from adbench.harness.errors import (
+    HarnessError,
     ToolArgumentError,
     ToolExecutionError,
     UnknownToolError,
@@ -98,12 +99,19 @@ class ToolRegistry:
         raises a plain TypeError from the underlying function call — caught
         here and re-raised as ToolArgumentError so it's a HarnessError the
         executor's retry/error-handling path actually catches, instead of an
-        uncaught TypeError blowing up the whole task."""
+        uncaught TypeError blowing up the whole task.
+
+        Any other non-harness exception from the tool body (e.g. AttributeError when a model passes
+        a list where a string is expected: notebook 18's OLMo-7B student sent city=[...] to
+        get_weather, 2026-10-02) is treated the same way. Before that fix such a call crashed the
+        whole worker; no completed run ever hit this path, so no earlier result changes."""
         spec = self.get(name)
         try:
             return spec.fn(**arguments)
-        except TypeError as e:
-            raise ToolArgumentError(f"Invalid arguments for tool {name!r}: {e}") from e
+        except HarnessError:
+            raise
+        except Exception as e:  # noqa: BLE001 - a model-supplied argument broke the tool body
+            raise ToolArgumentError(f"Invalid arguments for tool {name!r}: {type(e).__name__}: {e}") from e
 
 
 # --------------------------------------------------------------------------

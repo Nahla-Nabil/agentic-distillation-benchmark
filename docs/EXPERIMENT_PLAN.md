@@ -282,6 +282,13 @@ Decision rule for the paper: if sft_only clears the floor on chains 3+5, run the
 bootstrap as the main pair and report the pair in Sec. 4.5 alongside OLMo-1B. If it does not, the
 floor is a property of OLMo-2 at these sizes on this harness, and the Round-3 caveat stands.
 
+First run (2026-10-02): base seed 0 = 0.000 overall, sft_only seed 1 = 0.570 overall, then the
+seed-0 sft_only worker crashed: the model passed `city` as a list to get_weather, the tool raised
+AttributeError, and `ToolRegistry.call` only converted TypeError into a scored failure. Fixed so
+any non-harness exception from a tool body becomes `ToolArgumentError` (a failed attempt that
+uses a retry). Only calls that used to crash take the new path, so no finished result changes;
+notebook 18 is re-run with the same settings and skips the finished jobs.
+
 ## Upper bound on the teacher-specific gain (2026-10-02, CPU only)
 
 distilled − self_distill, main pair, 5 seeds, chains 3+5, crossed seeds × templates bootstrap
