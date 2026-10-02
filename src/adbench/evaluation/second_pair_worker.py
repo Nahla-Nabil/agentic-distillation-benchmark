@@ -52,8 +52,14 @@ EVAL_MAX_SEQ_LENGTH = 4096
 _FIRST_RUN_CONDITIONS = ("base", "sft_only")
 
 
-def result_path(seed: int, condition: str) -> str:
-    prefix = "pair2" if condition in _FIRST_RUN_CONDITIONS else "pair2b"
+def result_path(seed: int, condition: str, rerun_4k: bool = False) -> str:
+    """`rerun_4k` (added 2026-10-02): base/sft_only were first evaluated at 2048 under "pair2_";
+    their 4096-context re-run goes to "pair2c_" so the first run stays on Hugging Face as a trace.
+    Teacher conditions already ran at 4096 ("pair2b_") and are unaffected by the flag."""
+    if condition in _FIRST_RUN_CONDITIONS:
+        prefix = "pair2c" if rerun_4k else "pair2"
+    else:
+        prefix = "pair2b"
     return f"runs/v2-seed{seed}/results/stages/{prefix}_{condition}.json"
 
 
@@ -91,6 +97,8 @@ def main() -> None:
     parser.add_argument("--repo", default=os.environ.get("ADBENCH_HF_REPO", DEFAULT_REPO))
     parser.add_argument("--experiment-config", default="configs/experiment.yaml")
     parser.add_argument("--models-config", default="configs/models.yaml")
+    parser.add_argument("--rerun-4k", action="store_true",
+                        help="save base/sft_only under pair2c_ (their 4096-context re-run)")
     args = parser.parse_args()
 
     token = os.environ.get("HF_TOKEN")
@@ -117,7 +125,7 @@ def main() -> None:
     glaive_train_path = REPO_ROOT / "data" / "splits" / "train.jsonl"  # the main pipeline's own split, unmodified
 
     def already_done(seed: int, condition: str) -> bool:
-        return api.file_exists(repo_id=args.repo, filename=result_path(seed, condition), repo_type="model")
+        return api.file_exists(repo_id=args.repo, filename=result_path(seed, condition, args.rerun_4k), repo_type="model")
 
     def evaluate(seed: int, condition: str) -> list[dict[str, Any]]:
         if not glaive_train_path.exists():
@@ -169,7 +177,7 @@ def main() -> None:
     def save(seed: int, condition: str, rows: list[dict[str, Any]]) -> None:
         local = out_dir / f"seed{seed}_{condition}.json"
         local.write_text(json.dumps(rows), encoding="utf-8")
-        path = result_path(seed, condition)
+        path = result_path(seed, condition, args.rerun_4k)
         for attempt in range(1, 4):
             try:
                 api.upload_file(

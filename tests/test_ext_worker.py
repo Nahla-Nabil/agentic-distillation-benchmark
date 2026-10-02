@@ -62,3 +62,19 @@ def test_run_jobs_propagates_an_evaluation_failure():
 
     with pytest.raises(RuntimeError):
         run_jobs([(0, "a")], boom, lambda s, c: False, lambda s, c, r: None, log=lambda _: None)
+
+
+def test_primary_task_set_rerun_uses_its_own_prefix_and_task_set_string():
+    from adbench.evaluation.ext_worker import TASK_SETS, result_path
+
+    assert result_path(3, "distilled") == "runs/v2-seed3/results/stages/ext_eval_distilled.json"  # default unchanged
+    assert result_path(3, "distilled", "primary") == "runs/v2-seed3/results/stages/primary4k_eval_distilled.json"
+    assert TASK_SETS["primary"][1] == "unseen_tools_ctx4096"
+    assert len({name for _, name in TASK_SETS.values()} | {"unseen_tools"}) == 3  # never reuses an existing string
+
+
+def test_run_eval_primary_ctx4096_constant_matches_the_worker():
+    from adbench.evaluation.ext_worker import TASK_SETS
+    from adbench.evaluation.run_eval import PRIMARY_CTX4096_TASK_SET
+
+    assert PRIMARY_CTX4096_TASK_SET == TASK_SETS["primary"][1]

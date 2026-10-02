@@ -157,6 +157,23 @@ def run_ext_eval_for_condition(
     )
 
 
+PRIMARY_CTX4096_TASK_SET = "unseen_tools_ctx4096"
+
+
+def run_primary_ctx4096_eval_for_condition(
+    condition: str, model_fn: ModelFn, chain_lengths: list[int], max_retries_per_step: int = 2
+) -> list[dict[str, Any]]:
+    """The ORIGINAL 121-task unseen-tool set, re-run on a model loaded with a 4096-token context
+    (evaluation/ext_worker.py --task-set primary). Same tasks as task_set "unseen_tools", but tagged
+    "unseen_tools_ctx4096" so the re-run never mixes with the main pipeline's original 2048-context
+    rows: the main pair's primary set was first evaluated at 2048 while every later experiment
+    (sweeps, second/third/fourth pairs, extended set) used 4096."""
+    return run_harness_eval_for_condition(
+        condition, model_fn, chain_lengths, build_demo_registry(), max_retries_per_step,
+        task_source="synthetic", task_set=PRIMARY_CTX4096_TASK_SET,
+    )
+
+
 def run_seen_tool_eval_for_condition(
     condition: str, model_fn: ModelFn, n_tasks: int, max_retries_per_step: int = 2
 ) -> list[dict[str, Any]]:

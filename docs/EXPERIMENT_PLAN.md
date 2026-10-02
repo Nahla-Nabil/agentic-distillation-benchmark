@@ -302,3 +302,24 @@ than half the point estimate of the anchoring effect itself (+12.7). Report TOST
 supplementary and say plainly that the margins were chosen after seeing the data (no margin was
 pre-registered), so the equivalence result is descriptive, not confirmatory. The 121-task set alone
 is too small to bound the gain tightly (+14.1); say so.
+
+## Round 5 (notebook 19: put every primary-set number on a 4096 context) — built 2026-10-02
+
+Problem found while writing Methods §D: the main pair's primary 121-task set (notebook 09) and the
+second pair's base/sft_only (`pair2_`) were evaluated with a 2048-token context, while the sweeps,
+the extended set, the second pair's KD conditions (`pair2b_`) and both OLMo pairs used 4096. Long
+failing histories (plain-text answers) can exceed 2048 and get truncated, so cross-comparisons
+(e.g. tuned SFT at 4096 vs. default SFT at 2048; second-pair base at 2048 vs. KD at 4096) mixed
+contexts, and truncation could even contribute to default SFT's seed variance.
+
+Fix, no old file overwritten:
+- Main pair, eval only from the HF checkpoints: `ext_worker --task-set primary` →
+  `primary4k_eval_<cond>.json`, task_set `unseen_tools_ctx4096`; base (seed 0) + sft_only, sft_early,
+  self_distill, distilled × seeds 0-4 (21 jobs).
+- Second pair, retrain + eval (checkpoints were not kept): `second_pair_worker --rerun-4k` →
+  `pair2c_<cond>.json`; base (seed 0) + sft_only × seeds 0-2.
+
+Not re-run: the tool-diversity ablation (all its arms, including the n=8 reference, were evaluated
+at 2048, so that comparison is internally consistent; state its context in the paper) and
+`sft_ls` (not reported). After the run: every main-pair and second-pair number in `paper/` and in
+the statistics tables is recomputed from the 4096 files, and the bootstrap pass is re-run.

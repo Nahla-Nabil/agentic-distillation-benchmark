@@ -59,3 +59,10 @@ def test_loss_log_repo_path_is_namespaced_away_from_the_main_pipelines_logs():
     from adbench.evaluation.second_pair_worker import loss_log_repo_path
 
     assert loss_log_repo_path(1, "distilled_8b") == "runs/v2-seed1/results/training_logs/pair2_distilled_8b.jsonl"
+
+
+def test_rerun_4k_moves_only_base_and_sft_only_to_pair2c():
+    assert result_path(1, "sft_only", rerun_4k=True) == "runs/v2-seed1/results/stages/pair2c_sft_only.json"
+    assert result_path(0, "base", rerun_4k=True) == "runs/v2-seed0/results/stages/pair2c_base.json"
+    assert result_path(1, "sft_only") == "runs/v2-seed1/results/stages/pair2_sft_only.json"  # default unchanged
+    assert result_path(2, "distilled_8b", rerun_4k=True) == result_path(2, "distilled_8b")  # already 4096

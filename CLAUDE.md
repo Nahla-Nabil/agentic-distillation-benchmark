@@ -85,7 +85,7 @@ full framing.
 - `configs/` — `data.yaml`, `models.yaml` (student/teacher pairs, LoRA), `experiment.yaml`
   (conditions list, training hyperparameters, harness settings).
 - `notebooks/` — Kaggle-run pipelines, see "Notebooks" below.
-- `tests/` — everything not needing a GPU is unit-tested (currently 472
+- `tests/` — everything not needing a GPU is unit-tested (currently 478
   tests). Anything touching Unsloth/real model weights is "reviewed by
   reading," not tested locally — flagged as such in the relevant module's
   docstring.
@@ -201,6 +201,12 @@ new eval paths over longer contexts should do the same
   results under the `pair4_` prefix. Split across two accounts via the first
   cell's `CONDITIONS`/`INCLUDE_BASE` (see the notebook's intro). Built
   2026-10-02, not yet run.
+- `19_ctx4096_reeval.ipynb` — re-evaluates every primary-set number that was
+  measured at a 2048 context (main pair: eval only via `ext_worker --task-set
+  primary` → `primary4k_eval_*`, task_set `unseen_tools_ctx4096`; second pair
+  base/sft_only: retrain via `second_pair_worker --rerun-4k` → `pair2c_*`).
+  After it runs, paper numbers for those conditions come from the 4096 files.
+  Built 2026-10-02, not yet run. See `docs/EXPERIMENT_PLAN.md` "Round 5".
 
 `10_check_batching.ipynb` is superseded (folded into 11/13/14/15's setup
 cells) — don't run it standalone.
